@@ -1,0 +1,165 @@
+---
+# ============================================================================
+# FMC Security Role - Day 1 Deployment: Firepower Security Policies
+# ============================================================================
+
+# Register FTD with FMC (if not already registered)
+- name: Check FMC registration status
+  ansible.netcommon.restconf_get:
+    path: /api/fmc_config/v1/domain/{{ fmc_domain_id | default('e276abec-e0f2-11e3-8169-6233854b63f0') }}/devices?filter=byManagementIpAddress:{{ fmc_config.fmc_ip }}
+    output_format: json
+  register: fmc_registration_status
+  ignore_errors: true
+  tags:
+    - day1
+    - firepower
+    - fmc
+
+# Network Objects Creation
+- name: Create network objects
+  ansible.netcommon.restconf_post:
+    path: /api/fmc_config/v1/domain/{{ fmc_domain_id }}/object/networks
+    data:
+      name: "{{ item.name }}"
+      type: "{{ item.type }}"
+      value: "{{ item.value }}"
+      netmask: "{{ item.netmask }}"
+      description: "{{ item.description }}"
+    output_format: json
+  loop: "{{ network_objects }}"
+  when:
+    - network_objects is defined
+    - item.type == 'network'
+  ignore_errors: true
+  tags:
+    - day1
+    - firepower
+    - objects
+
+# Service Objects Creation
+- name: Create service objects
+  ansible.netcommon.restconf_post:
+    path: /api/fmc_config/v1/domain/{{ fmc_domain_id }}/object/protocolportobjects
+    data:
+      name: "{{ item.name }}"
+      protocol: "{{ item.protocol }}"
+      port: "{{ item.port }}"
+    output_format: json
+  loop: "{{ service_objects }}"
+  when:
+    - service_objects is defined
+  ignore_errors: true
+  tags:
+    - day1
+    - firepower
+    - objects
+
+# Access Control Policy Deployment
+- name: Deploy Access Control Policy
+  ansible.netcommon.restconf_post:
+    path: /api/fmc_config/v1/domain/{{ fmc_domain_id }}/policy/accesspolicies
+    data:
+      name: "{{ item.name }}"
+      description: "{{ item.description }}"
+      defaultAction:
+        action: "{{ item.default_action | upper }}"
+        logBegin: "{{ item.log_enabled | default(true) }}"
+        sendEventsToFMC: true
+    output_format: json
+  loop: "{{ access_control_policies }}"
+  when: access_control_policies is defined
+  ignore_errors: true
+  tags:
+    - day1
+    - firepower
+    - acp
+
+# Create ACL Rules
+- name: Create access control rules
+  ansible.netcommon.restconf_post:
+    path: /api/fmc_config/v1/domain/{{ fmc_domain_id }}/policy/accesspolicies/{{ acp_id }}/accessrules
+    data:
+      ruleIndex: "{{ item.id }}"
+      name: "{{ item.name }}"
+      type: AccessRule
+      action: "{{ item.action | upper }}"
+      enabled: true
+      logBegin: "{{ item.log_enabled | default(true) }}"
+      logEnd: "{{ item.log_enabled | default(true) }}"
+      logFiles: "{{ item.log_enabled | default(true) }}"
+      sendEventsToFMC: true
+    output_format: json
+  loop: "{{ access_control_policies[0].rules | default([]) }}"
+  when:
+    - access_control_policies is defined
+    - access_control_policies[0].rules is defined
+  ignore_errors: true
+  tags:
+    - day1
+    - firepower
+    - acp
+    - rules
+
+# NAT Policy Deployment
+- name: Deploy NAT policies
+  ansible.netcommon.restconf_post:
+    path: /api/fmc_config/v1/domain/{{ fmc_domain_id }}/policy/natpolicies
+    data:
+      name: "{{ item.name }}"
+      type: NAT
+      natType: "{{ item.type | upper }}"
+      description: "{{ item.description | default(omit) }}"
+    output_format: json
+  loop: "{{ nat_policy }}"
+  when: nat_policy is defined
+  ignore_errors: true
+  tags:
+    - day1
+    - firepower
+    - nat
+
+# Enable Security Intelligence
+- name: Configure Security Intelligence
+  ansible.netcommon.restconf_patch:
+    path: /api/fmc_config/v1/domain/{{ fmc_domain_id }}/policy/threatdefense
+    data:
+      dynamicDBEnabled: "{{ security_intelligence.dynamic_db_enabled }}"
+      updateInterval: "{{ security_intelligence.update_interval }}"
+    output_format: json
+  when: security_intelligence is defined
+  ignore_errors: true
+  tags:
+    - day1
+    - firepower
+    - security_intelligence
+
+# IPS/IDS Policy Configuration
+- name: Enable Intrusion Prevention System
+  ansible.netcommon.restconf_patch:
+    path: /api/fmc_config/v1/domain/{{ fmc_domain_id }}/policy/ipsipsignaturepolicies
+    data:
+      inspectionMode: "{{ intrusion_prevention.inspection_mode | upper }}"
+      threatLevel: "{{ intrusion_prevention.threat_level }}"
+    output_format: json
+  when: intrusion_prevention is defined
+  ignore_errors: true
+  tags:
+    - day1
+    - firepower
+    - ids_ips
+
+# Deploy Policy to Device
+- name: Deploy policies to FTD device
+  ansible.netcommon.restconf_post:
+    path: /api/fmc_config/v1/domain/{{ fmc_domain_id }}/deployment/deployments
+    data:
+      deployments:
+        - id: "{{ fmc_config.fmc_device_id }}"
+    output_format: json
+  when:
+    - fmc_config.fmc_device_id is defined
+  ignore_errors: true
+  tags:
+    - day1
+    - firepower
+    - deployment

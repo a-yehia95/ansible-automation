@@ -1,0 +1,235 @@
+---
+# ==============================================================================
+# Pure Storage FlashArray - Day 1: Provisioning
+# ==============================================================================
+# Purpose: Provision storage resources (host, volume, mapping)
+# 
+# Prerequisites:
+#   - Ansible Automation Platform with AAP Execution Environment
+#   - Pure Storage FlashArray accessible on network
+#   - API token configured in vault
+#
+# Variables Required (via --extra-vars or inventory):
+#   - volume_name: Name of volume to create
+#   - volume_size_gb: Volume size in GB
+#   - host_iqn: Host IQN for iSCSI discovery
+#   - host_name: ESXi/Linux hostname
+#   - host_ip: Host IP address
+#
+# Idempotency: Yes - safe to run multiple times
+# Execution: ansible-playbook pure_storage/playbooks/day1/provision.yml
+# ==============================================================================
+
+- name: Pure Storage FlashArray - Day 1 Provisioning
+  hosts: pure_storage_flasharray
+  gather_facts: false
+  connection: local
+  
+  vars:
+    operation_type: "provision"
+    log_prefix: "[PURE_DAY1]"
+
+  pre_tasks:
+    - name: Display operation banner
+      debug:
+        msg:
+          - "{{ log_prefix }} Starting Pure Storage Provisioning"
+          - "{{ log_prefix }} Array: {{ inventory_hostname }}"
+          - "{{ log_prefix }} Volume: {{ volume_name | default('NOT SET') }}"
+
+    - name: Validate required variables
+      block:
+        - name: Assert required provisioning variables
+          assert:
+            that:
+              - volume_name is defined and volume_name | length > 0
+              - volume_size_gb is defined and volume_size_gb | int > 0
+              - host_iqn is defined and host_iqn | length > 0
+              - host_name is defined and host_name | length > 0
+            fail_msg: |
+              Missing required variables for Pure Storage provisioning:
+              - volume_name: {{ volume_name | default('UNDEFINED') }}
+              - volume_size_gb: {{ volume_size_gb | default('UNDEFINED') }}
+              - host_iqn: {{ host_iqn | default('UNDEFINED') }}
+              - host_name: {{ host_name | default('UNDEFINED') }}
+              
+              Usage example:
+              ansible-playbook pure_storage/playbooks/day1/provision.yml \
+                --extra-vars='volume_name=db-volume-01 \
+                             volume_size_gb=500 \
+                             host_iqn=iqn.1991-05.com.example:esx01 \
+                             host_name=esx-01'
+            success_msg: "{{ log_prefix }} All required variables validated"
+
+      rescue:
+        - name: Display validation error
+          debug:
+            msg: "{{ log_prefix }} Validation failed - see error above"
+        - name: Fail playbook
+          fail:
+            msg: "Validation failed - required variables missing"
+
+  tasks:
+    # =========================================================================
+    # Phase 1: Register ESXi/Host on the FlashArray
+    # =========================================================================
+    - name: Register ESXi host on Pure Storage FlashArray
+      block:
+        - name: Check if host already exists
+          purestorage.flasharray.purefa_host_info:
+            name: "{{ host_name }}"
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: host_exists
+          no_log: true
+          failed_when: false
+          changed_when: false
+
+        - name: Display existing host status
+          debug:
+            msg: "{{ log_prefix }} Host {{ host_name }} already registered"
+          when: not host_exists.failed
+
+        - name: Create host if not exists
+          purestorage.flasharray.purefa_host:
+            name: "{{ host_name }}"
+            iqn:
+              - "{{ host_iqn }}"
+            personality: "{{ pure_host_personality }}"
+            state: present
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: host_creation_result
+          no_log: true
+          when: host_exists.failed
+
+        - name: Display host registration result
+          debug:
+            msg: "{{ log_prefix }} Host {{ host_name }} registered successfully"
+          when: host_creation_result is changed
+
+      rescue:
+        - name: Handle host registration failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to register host {{ host_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "Host registration failed - unable to proceed"
+
+    # =========================================================================
+    # Phase 2: Create Storage Volume
+    # =========================================================================
+    - name: Create storage volume on Pure Storage FlashArray
+      block:
+        - name: Check if volume already exists
+          purestorage.flasharray.purefa_volume_info:
+            name: "{{ volume_name }}"
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: volume_exists
+          no_log: true
+          failed_when: false
+          changed_when: false
+
+        - name: Display existing volume status
+          debug:
+            msg: "{{ log_prefix }} Volume {{ volume_name }} already exists ({{ volume_exists.volume[0].provisioned | default('unknown') }} bytes)"
+          when: not volume_exists.failed
+
+        - name: Create volume if not exists
+          purestorage.flasharray.purefa_volume:
+            name: "{{ volume_name }}"
+            size: "{{ volume_size_gb }}G"
+            overwrite: "{{ pure_volume_defaults.overwrite }}"
+            state: present
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: volume_creation_result
+          no_log: true
+          when: volume_exists.failed
+
+        - name: Display volume creation result
+          debug:
+            msg: "{{ log_prefix }} Volume {{ volume_name }} ({{ volume_size_gb }}GB) created successfully"
+          when: volume_creation_result is changed
+
+      rescue:
+        - name: Handle volume creation failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to create volume {{ volume_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "Volume creation failed - unable to proceed with mapping"
+
+    # =========================================================================
+    # Phase 3: Map Volume to Host
+    # =========================================================================
+    - name: Map volume to ESXi host
+      block:
+        - name: Check if volume already mapped to host
+          purestorage.flasharray.purefa_host_volume_info:
+            host: "{{ host_name }}"
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: host_volumes
+          no_log: true
+          failed_when: false
+          changed_when: false
+
+        - name: Set mapping status fact
+          set_fact:
+            volume_already_mapped: "{{ volume_name in host_volumes.host_volume | map(attribute='vol') | list if not host_volumes.failed else false }}"
+
+        - name: Display existing volume mapping
+          debug:
+            msg: "{{ log_prefix }} Volume {{ volume_name }} already mapped to host {{ host_name }}"
+          when: volume_already_mapped
+
+        - name: Map volume to host if not already mapped
+          purestorage.flasharray.purefa_connect:
+            host: "{{ host_name }}"
+            volume: "{{ volume_name }}"
+            state: present
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: volume_mapping_result
+          no_log: true
+          when: not volume_already_mapped
+
+        - name: Display volume mapping result
+          debug:
+            msg: "{{ log_prefix }} Volume {{ volume_name }} mapped to host {{ host_name }} successfully"
+          when: volume_mapping_result is changed
+
+      rescue:
+        - name: Handle volume mapping failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to map volume {{ volume_name }} to host {{ host_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "Volume mapping failed"
+
+  post_tasks:
+    - name: Display provisioning completion
+      debug:
+        msg:
+          - "{{ log_prefix }} ✓ Provisioning completed successfully"
+          - "{{ log_prefix }} Host: {{ host_name }}"
+          - "{{ log_prefix }} Volume: {{ volume_name }} ({{ volume_size_gb }}GB)"
+          - "{{ log_prefix }} Status: Ready for use"
+
+    - name: Log provisioning event
+      debug:
+        msg: "{{ log_prefix }} Provisioning event logged"

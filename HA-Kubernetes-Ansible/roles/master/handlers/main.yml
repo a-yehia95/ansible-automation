@@ -1,0 +1,22 @@
+---
+# ==============================================================================
+# Master Role Handlers
+# ==============================================================================
+
+- name: Restart kube-apiserver
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      rollout restart deployment/kube-apiserver -n kube-system
+  when: inventory_hostname == groups['master'][0]
+
+- name: Restart kube-controller-manager
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      rollout restart deployment/kube-controller-manager -n kube-system
+  when: inventory_hostname == groups['master'][0]
+
+- name: Restart kube-scheduler
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      rollout restart deployment/kube-scheduler -n kube-system
+  when: inventory_hostname == groups['master'][0]

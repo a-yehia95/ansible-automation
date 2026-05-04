@@ -1,0 +1,129 @@
+---
+# ==============================================================================
+# Main Day 2 Playbook - VM Administration and Operations
+# ==============================================================================
+# Orchestrates ongoing VM administration tasks
+#
+# Capabilities:
+#   - Snapshot management (create, remove, revert)
+#   - Power state management (on, off, restart)
+#   - Host maintenance mode and vMotion
+#   - Infrastructure reporting and facts gathering
+#
+# Prerequisites:
+#   - Day 0 & Day 1 setup completed
+#   - VMs deployed and running
+#
+# Usage Examples:
+#   # Snapshot management
+#   ansible-playbook playbooks/day2/admin.yml --tags=snapshots \
+#     --extra-vars='vm_name=web-srv-01 snapshot_state=present'
+#
+#   # Power management
+#   ansible-playbook playbooks/day2/admin.yml --tags=power \
+#     --extra-vars='vm_names=[web-srv-01,web-srv-02] power_state=powered_off'
+#
+#   # Host maintenance
+#   ansible-playbook playbooks/day2/admin.yml --tags=maintenance \
+#     --extra-vars='cluster_name=Prod-Cluster-1 maintenance_mode=enter'
+#
+#   # Generate reports
+#   ansible-playbook playbooks/day2/admin.yml --tags=reporting
+
+---
+- name: "Day 2 - VM Administration and Operations"
+  hosts: vmware_infrastructure
+  gather_facts: true
+  vars_files:
+    - ../../group_vars/vmware_infrastructure.yml
+
+  pre_tasks:
+    - name: Display Day 2 operations menu
+      debug:
+        msg:
+          - ""
+          - "=========================================="
+          - "Day 2: VMware Administration & Operations"
+          - "=========================================="
+          - "Available Operations (use --tags):"
+          - ""
+          - "1. SNAPSHOTS"
+          - "   ansible-playbook playbooks/day2/admin.yml --tags=snapshots"
+          - "   - Create snapshot"
+          - "   - Remove snapshot"
+          - "   - Revert to snapshot"
+          - "   - List snapshots"
+          - ""
+          - "2. POWER MANAGEMENT"
+          - "   ansible-playbook playbooks/day2/admin.yml --tags=power"
+          - "   - Power on VMs"
+          - "   - Power off VMs (graceful or forced)"
+          - "   - Restart VMs"
+          - ""
+          - "3. HOST MAINTENANCE"
+          - "   ansible-playbook playbooks/day2/admin.yml --tags=maintenance"
+          - "   - Enter maintenance mode (with vMotion)"
+          - "   - Exit maintenance mode"
+          - ""
+          - "4. REPORTING"
+          - "   ansible-playbook playbooks/day2/admin.yml --tags=reporting"
+          - "   - VM inventory report"
+          - "   - Host status report"
+          - "   - Snapshot inventory"
+          - "   - Datastore utilization"
+          - ""
+          - "=========================================="
+      tags:
+        - always
+
+  roles:
+    # Snapshots Role - Run when needed
+    - role: administration/snapshots
+      tags:
+        - day2
+        - administration
+        - snapshots
+      when: "'snapshots' in ansible_run_tags or 'all' in ansible_run_tags"
+
+    # Power Management Role
+    - role: administration/power_management
+      tags:
+        - day2
+        - administration
+        - power
+      when: "'power' in ansible_run_tags or 'all' in ansible_run_tags"
+
+    # Host Maintenance Role
+    - role: administration/host_maintenance
+      tags:
+        - day2
+        - administration
+        - maintenance
+      when: "'maintenance' in ansible_run_tags or 'all' in ansible_run_tags"
+
+    # Reporting Role
+    - role: administration/reporting
+      tags:
+        - day2
+        - administration
+        - reporting
+      when: "'reporting' in ansible_run_tags or 'all' in ansible_run_tags"
+
+  post_tasks:
+    - name: Display Day 2 operations completion
+      debug:
+        msg:
+          - ""
+          - "=========================================="
+          - "✓ Day 2 Operations Complete"
+          - "=========================================="
+          - "Operations executed with tags: {{ ansible_run_tags | default(['none']) | join(', ') }}"
+          - ""
+          - "For additional operations:"
+          - "1. Re-run with different --tags flag"
+          - "2. Use --extra-vars for operation parameters"
+          - "3. Check reports in configured report directory"
+          - ""
+          - "=========================================="
+      tags:
+        - always

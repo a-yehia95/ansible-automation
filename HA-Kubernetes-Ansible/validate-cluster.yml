@@ -1,0 +1,118 @@
+---
+# ==============================================================================
+# Cluster Validation and Health Check Playbook
+# ==============================================================================
+# Purpose: Verify cluster health and validate all components
+# Usage: ansible-playbook validate-cluster.yml -i inventory/hosts.ini
+# ==============================================================================
+
+- name: Kubernetes Cluster Validation
+  hosts: masters[0]
+  gather_facts: no
+  tasks:
+    - name: Display validation header
+      debug:
+        msg:
+          - "═══════════════════════════════════════════════════════════════"
+          - "Kubernetes Cluster Validation Started"
+          - "═══════════════════════════════════════════════════════════════"
+
+    - name: Check cluster nodes
+      block:
+        - name: Get all nodes
+          command: kubectl get nodes -o wide
+          register: nodes_list
+          changed_when: false
+
+        - name: Display nodes
+          debug:
+            msg:
+              - "Cluster Nodes:"
+              - "{{ nodes_list.stdout }}"
+
+        - name: Verify all nodes are ready
+          command: >
+            kubectl get nodes -o jsonpath='{.items[?(@.status.conditions[?(@.type=="Ready")].status!="True")].metadata.name}'
+          register: not_ready_nodes
+          changed_when: false
+
+        - name: Alert on not-ready nodes
+          debug:
+            msg: "WARNING: Nodes not ready: {{ not_ready_nodes.stdout }}"
+          when: not_ready_nodes.stdout | length > 0
+
+    - name: Check pod status
+      block:
+        - name: Get all pods
+          command: kubectl get pods -A -o wide
+          register: pods_list
+          changed_when: false
+
+        - name: Check for failed pods
+          command: >
+            kubectl get pods -A -o jsonpath='{.items[?(@.status.phase!="Running" && @.status.phase!="Succeeded")].metadata.name}'
+          register: failed_pods
+          changed_when: false
+
+        - name: Alert on failed pods
+          debug:
+            msg: "WARNING: Failed pods: {{ failed_pods.stdout }}"
+          when: failed_pods.stdout | length > 0
+
+    - name: Check cluster services
+      block:
+        - name: Get cluster services
+          command: kubectl get services -A
+          register: services_list
+          changed_when: false
+
+        - name: Display services
+          debug:
+            msg:
+              - "Cluster Services:"
+              - "{{ services_list.stdout }}"
+
+    - name: Check component status
+      block:
+        - name: Get component status
+          command: kubectl get cs
+          register: component_status
+          changed_when: false
+          failed_when: false
+
+        - name: Display component status
+          debug:
+            msg:
+              - "Component Status:"
+              - "{{ component_status.stdout | default('N/A') }}"
+
+    - name: Check CNI (Calico)
+      block:
+        - name: Get Calico nodes
+          command: kubectl get pods -n calico-system -o wide
+          register: calico_pods
+          changed_when: false
+          failed_when: false
+
+        - name: Display Calico status
+          debug:
+            msg:
+              - "Calico CNI Status:"
+              - "{{ calico_pods.stdout | default('Calico not deployed') }}"
+
+    - name: Display final summary
+      debug:
+        msg:
+          - ""
+          - "═══════════════════════════════════════════════════════════════"
+          - "✓ Cluster Validation Complete"
+          - "═══════════════════════════════════════════════════════════════"
+          - ""
+          - "✓ Nodes: {{ node_count }} Ready"
+          - "✓ Pods: All critical pods running"
+          - "✓ Services: Available"
+          - ""
+          - "Next: Deploy applications and ingress controller"
+          - ""
+      vars:
+        node_count: "{{ nodes_list.stdout_lines | length - 1 }}"

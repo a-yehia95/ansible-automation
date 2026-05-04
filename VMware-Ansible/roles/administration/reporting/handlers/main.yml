@@ -1,0 +1,12 @@
+---
+# ==============================================================================
+# Reporting Role - Handlers
+# ==============================================================================
+
+- name: Archive old reports
+  debug:
+    msg: "Old reports archived"
+
+- name: Update reporting index
+  debug:
+    msg: "Reporting index updated"

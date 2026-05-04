@@ -1,0 +1,12 @@
+---
+# ==============================================================================
+# Customization Role - Handlers
+# ==============================================================================
+
+- name: Refresh VM network configuration
+  debug:
+    msg: "VM network configuration refreshed"
+
+- name: Wait for customization to complete
+  debug:
+    msg: "Customization process completed"

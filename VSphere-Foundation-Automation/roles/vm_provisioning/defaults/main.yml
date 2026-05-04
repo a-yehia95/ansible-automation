@@ -1,0 +1,30 @@
+---
+# ==============================================================================
+# Role: vm_provisioning - Defaults
+# ==============================================================================
+
+# VM Template Configuration
+vm_template_source: "Ubuntu-22.04-Template"
+vm_default_cpu: 2
+vm_default_memory_mb: 4096
+vm_default_disk_gb: 40
+
+# VM State
+vm_state: "present"
+vm_power_state: "poweredOn"
+
+# VM Customization
+vm_customization_enabled: true
+vm_hostname_prefix: "vm-"
+vm_domain: "example.com"
+
+# Network Configuration
+vm_default_gateway: "192.168.1.1"
+vm_default_dns_servers:
+  - "8.8.8.8"
+  - "8.8.4.4"
+
+# Disk Configuration
+vm_disk_datastore: "datastore-vmfs-01"
+vm_disk_size_gb: 40
+vm_disk_provisioning: "thin"

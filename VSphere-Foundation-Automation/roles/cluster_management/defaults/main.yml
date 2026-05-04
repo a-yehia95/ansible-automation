@@ -1,0 +1,22 @@
+---
+# ==============================================================================
+# Role: cluster_management - Defaults
+# ==============================================================================
+
+cluster_name: "Cluster1"
+cluster_state: "present"
+cluster_ha_enabled: true
+cluster_drs_enabled: true
+cluster_drs_automation_level: "fullyAutomated"
+cluster_vsan_enabled: false
+
+# HA Configuration Defaults
+cluster_ha_host_monitoring: "enabled"
+cluster_ha_vm_monitoring: "vmMonitoringOnly"
+cluster_ha_vm_failure_interval: 30
+cluster_ha_vm_minimum_uptime: 120
+cluster_ha_vm_restart_priority: "high"
+
+# DRS Configuration Defaults
+cluster_drs_vmotion_threshold: 3
+cluster_drs_vm_metric_enabled: true

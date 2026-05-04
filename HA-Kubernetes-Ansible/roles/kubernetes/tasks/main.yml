@@ -1,0 +1,94 @@
+---
+# ==============================================================================
+# Kubernetes Role - Main Task File
+# ==============================================================================
+# Purpose: Install kubeadm, kubelet, and kubectl on all nodes
+# ==============================================================================
+
+- name: Add Kubernetes repository
+  block:
+    - name: Create Kubernetes repo file
+      file:
+        path: /etc/yum.repos.d/kubernetes.repo
+        state: touch
+        mode: "0644"
+      register: k8s_repo_file
+      changed_when: k8s_repo_file.changed
+
+    - name: Add Kubernetes repository configuration
+      copy:
+        content: |
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version | regex_replace('^(\d+\.\d+).*', '\1') }}/rpm/
+          enabled=1
+          gpgcheck=1
+          gpgkey=https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version | regex_replace('^(\d+\.\d+).*', '\1') }}/rpm/repodata/repomd.xml.key
+        dest: /etc/yum.repos.d/kubernetes.repo
+      register: k8s_repo_config
+      changed_when: k8s_repo_config.changed
+
+- name: Install Kubernetes packages
+  dnf:
+    name:
+      - "kubeadm-{{ kubeadm_version }}-00"
+      - "kubelet-{{ kubelet_version }}-00"
+      - "kubectl-{{ kubectl_version }}-00"
+    state: present
+    allow_downgrade: yes
+  register: k8s_install
+  changed_when: k8s_install.changed
+
+- name: Enable kubelet service
+  systemd:
+    name: kubelet
+    enabled: yes
+    daemon_reload: yes
+  register: kubelet_enable
+  changed_when: kubelet_enable.changed
+
+- name: Configure kubelet for systemd cgroups
+  block:
+    - name: Create kubelet configuration directory
+      file:
+        path: /etc/systemd/system/kubelet.service.d
+        state: directory
+        mode: "0755"
+
+    - name: Create kubelet systemd override
+      copy:
+        content: |
+          [Service]
+          Environment="KUBELET_EXTRA_ARGS=--cgroup-driver=systemd --container-runtime-endpoint=/run/crio/crio.sock --pod-infra-container-image=registry.k8s.io/pause:3.9"
+        dest: /etc/systemd/system/kubelet.service.d/10-cgroup-driver.conf
+      register: kubelet_config
+      changed_when: kubelet_config.changed
+      notify: Restart kubelet
+
+- name: Verify Kubernetes tools installation
+  block:
+    - name: Check kubeadm version
+      command: kubeadm version -o short
+      register: kubeadm_version_check
+      changed_when: false
+      failed_when: false
+
+    - name: Check kubelet version
+      command: kubelet --version
+      register: kubelet_version_check
+      changed_when: false
+      failed_when: false
+
+    - name: Check kubectl version
+      command: kubectl version --client --short
+      register: kubectl_version_check
+      changed_when: false
+      failed_when: false
+
+    - name: Display Kubernetes tools status
+      debug:
+        msg:
+          - "✓ Kubernetes Tools Installed"
+          - "  kubeadm: {{ kubeadm_version_check.stdout | default('Unknown') }}"
+          - "  kubelet: {{ kubelet_version_check.stdout | default('Unknown') }}"
+          - "  kubectl: {{ kubectl_version_check.stdout | default('Unknown') }}"

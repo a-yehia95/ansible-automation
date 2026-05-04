@@ -1,0 +1,37 @@
+---
+# ==============================================================================
+# Role: cis_authentication - Default Variables
+# ==============================================================================
+
+cis_authentication:
+  # SSH Configuration
+  ssh_config:
+    port: 22
+    protocol_version: 2
+    permit_root_login: "without-password"
+    pubkey_authentication: "yes"
+    password_authentication: "no"
+    permit_empty_password: "no"
+    x11_forwarding: "no"
+    maxauthtries: 3
+    maxsessions: 5
+    clientaliveinterval: 300
+    clientalivecount: 2
+    compression: "no"
+    hostbasedauthentication: "no"
+    kbdinteractiveauthentication: "no"
+    gssapiauthentication: "no"
+    usepam: "yes"
+    permituserenvironment: "no"
+  
+  # PAM Configuration
+  pam_config:
+    password_history: 5
+    password_min_class: 1
+    pam_faillock_enabled: true
+  
+  # SSH Key Configuration
+  ssh_key_bits: 4096
+  ssh_strong_ciphers: true
+
+enable_authentication: true

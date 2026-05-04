@@ -1,0 +1,30 @@
+---
+# ==============================================================================
+# Role: cis_services - Default Variables
+# ==============================================================================
+
+cis_services:
+  # Services to disable (unless needed)
+  services_to_disable:
+    - avahi-daemon
+    - cups
+    - isc-dhcp-server
+    - isc-dhcp-server6
+    - bind
+    - vsftpd
+    - httpd
+    - dovecot
+    - samba
+    - snmpd
+    - rsync
+    - nis
+  
+  # Services to enable
+  services_to_enable:
+    - auditd
+    - firewalld
+    - crond
+    - rsyslog
+    - sshd
+
+enable_services: true

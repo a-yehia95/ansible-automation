@@ -1,0 +1,113 @@
+---
+# ==============================================================================
+# Main Day 0 Playbook - Foundation Infrastructure Setup
+# ==============================================================================
+# Orchestrates foundation infrastructure setup for VMware vSphere
+# 
+# Prerequisites:
+#   - VMware community collection installed
+#   - Vault password configured for encrypted credentials
+#   - vCenter credentials in group_vars/vmware_infrastructure/vault.yml
+#
+# Usage:
+#   ansible-playbook playbooks/day0/foundation.yml --vault-password-file=.vault_pass
+#   ansible-playbook playbooks/day0/foundation.yml --tags=datacenter
+#   ansible-playbook playbooks/day0/foundation.yml -i inventory/hosts --vault-id @prompt
+
+---
+- name: "Day 0 - VMware Foundation Infrastructure Setup"
+  hosts: vmware_infrastructure
+  gather_facts: true
+  vars_files:
+    - ../../group_vars/vmware_infrastructure.yml
+
+  pre_tasks:
+    - name: Display foundation setup information
+      debug:
+        msg:
+          - "=========================================="
+          - "Day 0: Foundation Infrastructure Setup"
+          - "=========================================="
+          - "vCenter: {{ vcenter_hostname }}"
+          - "Datacenters: {{ datacenters | length }}"
+          - "Clusters: {{ clusters | length }}"
+          - "DVS Switches: {{ dvs_switches | length }}"
+          - "Port Groups: {{ port_groups | length }}"
+          - "=========================================="
+      tags:
+        - day0
+        - always
+
+    - name: Verify vCenter connectivity
+      vmware_about_info:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        port: "{{ vcenter_port }}"
+        validate_certs: "{{ vcenter_validate_certs }}"
+      delegate_to: localhost
+      register: vcenter_info
+      tags:
+        - day0
+        - verify
+        - always
+
+    - name: Display vCenter information
+      debug:
+        msg:
+          - "vCenter Version: {{ vcenter_info.about.version }}"
+          - "Build: {{ vcenter_info.about.build }}"
+      tags:
+        - day0
+        - verify
+        - always
+
+  roles:
+    - role: foundation/datacenter
+      tags:
+        - day0
+        - foundation
+        - datacenter
+
+    - role: foundation/cluster
+      tags:
+        - day0
+        - foundation
+        - cluster
+
+    - role: foundation/folders
+      tags:
+        - day0
+        - foundation
+        - folders
+
+    - role: foundation/dvs
+      tags:
+        - day0
+        - foundation
+        - dvs
+
+  post_tasks:
+    - name: Display Day 0 completion summary
+      debug:
+        msg:
+          - ""
+          - "=========================================="
+          - "✓ Day 0 Foundation Setup Complete"
+          - "=========================================="
+          - "Foundation infrastructure created:"
+          - "- Datacenters: {{ datacenters | length }}"
+          - "- Clusters: {{ clusters | length }}"
+          - "- VM Folders: {{ vm_folders | length }}"
+          - "- DVS Switches: {{ dvs_switches | length }}"
+          - "- Port Groups: {{ port_groups | length }}"
+          - ""
+          - "Next Steps:"
+          - "1. Verify foundation setup in vSphere Client"
+          - "2. Proceed to Day 1 for VM provisioning"
+          - "   ansible-playbook playbooks/day1/provision.yml"
+          - ""
+          - "=========================================="
+      tags:
+        - day0
+        - always

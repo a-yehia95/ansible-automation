@@ -1,0 +1,58 @@
+#!/bin/bash
+# ==============================================================================
+# ETCD Backup Script
+# ==============================================================================
+# Backs up etcd database to {{ etcd_backup_path }}
+# Runs via cron every 6 hours
+
+set -e
+
+BACKUP_DIR="{{ etcd_backup_path }}"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="${BACKUP_DIR}/etcd-backup-${TIMESTAMP}.db"
+RETENTION_DAYS={{ backup_retention_days }}
+
+# Create backup directory if it doesn't exist
+mkdir -p "${BACKUP_DIR}"
+
+# Log file
+LOG_FILE="${BACKUP_DIR}/backup.log"
+
+# Function to log messages
+log_message() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "${LOG_FILE}"
+}
+
+# Function to backup etcd
+backup_etcd() {
+    log_message "Starting etcd backup..."
+    
+    export ETCDCTL_API=3
+    export ETCDCTL_CACERT={{ etcd_cert_path }}/ca.pem
+    export ETCDCTL_CERT={{ etcd_cert_path }}/client.pem
+    export ETCDCTL_KEY={{ etcd_cert_path }}/client-key.pem
+    
+    if etcdctl --endpoints=https://127.0.0.1:2379 snapshot save "${BACKUP_FILE}"; then
+        log_message "✓ Backup completed successfully: ${BACKUP_FILE}"
+        ls -lh "${BACKUP_FILE}" >> "${LOG_FILE}"
+    else
+        log_message "✗ Backup failed!"
+        return 1
+    fi
+}
+
+# Function to cleanup old backups
+cleanup_old_backups() {
+    log_message "Cleaning up backups older than ${RETENTION_DAYS} days..."
+    
+    find "${BACKUP_DIR}" -name "etcd-backup-*.db" -type f -mtime +${RETENTION_DAYS} -delete
+    
+    log_message "Cleanup completed. Current backups:"
+    ls -lh "${BACKUP_DIR}"/etcd-backup-*.db 2>/dev/null | tail -10 >> "${LOG_FILE}" || true
+}
+
+# Main execution
+log_message "=========================================="
+backup_etcd || exit 1
+cleanup_old_backups
+log_message "=========================================="

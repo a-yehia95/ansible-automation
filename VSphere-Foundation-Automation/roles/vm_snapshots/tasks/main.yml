@@ -1,0 +1,123 @@
+---
+# ==============================================================================
+# Role: vm_snapshots
+# Description: Manage VM snapshots for backup and disaster recovery
+# ==============================================================================
+
+- name: Manage Virtual Machine Snapshots
+  block:
+    - name: Query existing snapshots
+      vmware.rest.vcenter_vm_snapshot_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ vm.name }}"
+      register: vm_snapshots
+      loop: "{{ day2_config.snapshot_policy.vms | default([]) }}"
+      loop_control:
+        loop_var: vm
+      when: day2_config.snapshot_policy.enabled | default(false)
+      tags:
+        - snapshot_query
+
+    - name: Display existing snapshots
+      debug:
+        msg: |
+          Snapshots for {{ vm.name }}:
+          {% for snapshot in vm_snapshots.results | default([]) %}
+          - {{ snapshot.result.snapshots | default([]) | to_nice_yaml }}
+          {% endfor %}
+        verbosity: 1
+      tags:
+        - snapshot_query
+        - debug
+
+    - name: Create snapshot for VM
+      vmware.rest.vcenter_vm_snapshot_create:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ snapshot.vm_name }}"
+        name: "{{ snapshot.snapshot_name }}"
+        description: "{{ snapshot.description | default('Ansible managed snapshot') }}"
+        memory: "{{ snapshot.include_memory | default(false) }}"
+        quiesce: "{{ snapshot.quiesce | default(false) }}"
+      register: snapshot_create_result
+      loop: "{{ day2_config.snapshots_to_create | default([]) }}"
+      loop_control:
+        loop_var: snapshot
+      tags:
+        - snapshot_create
+
+    - name: Revert to snapshot
+      vmware.rest.vcenter_vm_snapshot_revert:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ snapshot.vm_name }}"
+        snapshot_name: "{{ snapshot.snapshot_name }}"
+      register: snapshot_revert_result
+      loop: "{{ day2_config.snapshots_to_revert | default([]) }}"
+      loop_control:
+        loop_var: snapshot
+      tags:
+        - snapshot_revert
+
+    - name: Delete snapshot
+      vmware.rest.vcenter_vm_snapshot_delete:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ snapshot.vm_name }}"
+        snapshot_name: "{{ snapshot.snapshot_name }}"
+        remove_children: "{{ snapshot.remove_children | default(false) }}"
+      register: snapshot_delete_result
+      loop: "{{ day2_config.snapshots_to_delete | default([]) }}"
+      loop_control:
+        loop_var: snapshot
+      tags:
+        - snapshot_delete
+
+    - name: Consolidate VM snapshots
+      vmware.rest.vcenter_vm_snapshot_consolidate:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ vm_name }}"
+      register: snapshot_consolidate_result
+      loop: "{{ day2_config.vms_to_consolidate | default([]) }}"
+      loop_control:
+        loop_var: vm_name
+      tags:
+        - snapshot_consolidate
+
+    - name: Display snapshot operation results
+      debug:
+        msg: |
+          Snapshot Operations:
+          Snapshots Created: {{ snapshot_create_result.results | default([]) | length }}
+          Snapshots Reverted: {{ snapshot_revert_result.results | default([]) | length }}
+          Snapshots Deleted: {{ snapshot_delete_result.results | default([]) | length }}
+          VMs Consolidated: {{ snapshot_consolidate_result.results | default([]) | length }}
+        verbosity: 0
+      tags:
+        - snapshot_summary
+
+  rescue:
+    - name: Handle snapshot management error
+      debug:
+        msg: |
+          Error managing snapshots:
+          {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags:
+        - error_handling
+
+  tags:
+    - vm_snapshots
+    - day2
+    - administration

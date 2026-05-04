@@ -1,0 +1,13 @@
+---
+plugin: redhat.satellite.foreman
+url: https://##########.com
+user: ansible_service_account
+password: "{{ vault_satellite_password }}"
+validate_certs: false
+# Group hosts by their Satellite Host Group (e.g., RHEL9_Hardened)
+group_by:
+  - hostgroup
+# Only pull hosts that are in the "Building" or "Installed" state
+query: "location = 'Primary_DC' AND organization = 'Main_Org'"
+
+

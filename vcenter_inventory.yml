@@ -1,0 +1,320 @@
+---
+# Sample configuration file for VMware Guest dynamic inventory
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    with_tags: true
+
+# Sample configuration file for VMware Guest dynamic inventory using Jinja to template the username and password.
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: '{{ (lookup("file","~/.config/vmware.yaml") | from_yaml).username }}'
+    password: '{{ (lookup("file","~/.config/vmware.yaml") | from_yaml).password }}'
+    validate_certs: false
+    with_tags: true
+
+# Gather minimum set of properties for VMware guest
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    properties:
+    - 'name'
+    - 'guest.ipAddress'
+    - 'config.name'
+    - 'config.uuid'
+
+# Gather subproperties such as the parent (mostly cluster) of an ESXi
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    properties:
+    - 'name'
+    - 'guest.ipAddress'
+    - 'config.name'
+    - 'config.uuid'
+    subproperties:
+    - property: 'summary.runtime.host'
+      subelements:
+      - 'name'
+      - 'parent.name'
+
+# Create Groups based upon VMware Tools status
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    properties:
+    - 'name'
+    - 'config.name'
+    - 'guest.toolsStatus'
+    - 'guest.toolsRunningStatus'
+    hostnames:
+    - config.name
+    keyed_groups:
+    - key: guest.toolsStatus
+      separator: ''
+    - key: guest.toolsRunningStatus
+      separator: ''
+
+# Filter VMs based upon condition
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    properties:
+    - 'runtime.powerState'
+    - 'config.name'
+    filters:
+    - runtime.powerState == "poweredOn"
+    hostnames:
+    - config.name
+
+# Filter VM's based on OR conditions
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    properties:
+    - 'name'
+    - 'config.name'
+    - 'guest.ipAddress'
+    - 'guest.toolsStatus'
+    - 'guest.toolsRunningStatus'
+    - 'config.guestFullName'
+    - 'config.guestId'
+    hostnames:
+    - 'config.name'
+    filters:
+    - config.guestId == "rhel7_64Guest" or config.name == "rhel_20_04_empty"
+
+# Filter VM's based on regex conditions
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    properties:
+    - 'config.name'
+    - 'config.guestId'
+    - 'guest.ipAddress'
+    - 'summary.runtime.powerState'
+    filters:
+    - guest.ipAddress is defined and (guest.ipAddress is match('192.168.*') or guest.ipAddress is match('192.169.*'))
+
+# Using compose and groups
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    properties:
+    - 'name'
+    - 'config.name'
+    - 'guest.ipAddress'
+    compose:
+      # This will populate the IP address of virtual machine if available
+      # and will be used while communicating to the given virtual machine
+      ansible_host: 'guest.ipAddress'
+      composed_var: 'config.name'
+      # This will populate a host variable with a string value
+      ansible_user: "'admin'"
+      ansible_connection: "'ssh'"
+    groups:
+      VMs: true
+    hostnames:
+    - config.name
+
+# Use Datacenter, Cluster and Folder value to list VMs
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.200.241
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    with_tags: true
+    resources:
+      - datacenter:
+        - Asia-Datacenter1
+        - Asia-Datacenter2
+        resources:
+        - compute_resource:
+          - Asia-Cluster1
+          resources:
+          - host_system:
+            - Asia-ESXI4
+        - folder:
+          - dev
+          - prod
+
+# Use Category and it's relation with Tag
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.201.128
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    hostnames:
+    - 'config.name'
+    properties:
+    - 'config.name'
+    - 'config.guestId'
+    - 'guest.ipAddress'
+    - 'summary.runtime.powerState'
+    with_tags: true
+    keyed_groups:
+    - key: tag_category.OS
+      prefix: "vmware_tag_os_category_"
+      separator: ""
+    with_nested_properties: true
+    filters:
+    - "tag_category.OS is defined and 'Linux' in tag_category.OS"
+
+# customizing hostnames based on VM's FQDN. The second hostnames template acts as a fallback mechanism.
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    hostnames:
+     - 'config.name+"."+guest.ipStack.0.dnsConfig.domainName'
+     - 'config.name'
+    properties:
+      - 'config.name'
+      - 'config.guestId'
+      - 'guest.hostName'
+      - 'guest.ipAddress'
+      - 'guest.guestFamily'
+      - 'guest.ipStack'
+
+# Select a specific IP address for use by ansible when multiple NICs are present on the VM
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.223.31
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    compose:
+      # Set the IP address used by ansible to one that starts by 10.42. or 10.43.
+      ansible_host: >-
+        guest.net
+        | selectattr('ipAddress')
+        | map(attribute='ipAddress')
+        | flatten
+        | select('match', '^10.42.*|^10.43.*')
+        | list
+        | first
+    properties:
+      - guest.net
+
+# Group hosts using Jinja2 conditionals
+    plugin: community.vmware.vmware_vm_inventory
+    strict: false
+    hostname: 10.65.13.37
+    username: administrator@vsphere.local
+    password: Esxi@123$%
+    validate_certs: false
+    hostnames:
+    - config.name
+    properties:
+    - 'name'
+    - 'config.name'
+    - 'config.datastoreUrl'
+    groups:
+      slow_storage: "'Nas01' in config.datastoreUrl[0].name"
+      fast_storage: "'SSD' in config.datastoreUrl[0].name"
+
+plugin: community.vmware.vmware_vm_inventory
+# Use the VM name as the inventory hostname
+hostnames:
+  - config.name
+
+strict: False
+hostname: vcenter.@@@@@@@@.com
+username: administrator@vsphere.local
+password: "{{ vault_vcenter_password }}"
+validate_certs: False
+with_hostname: True
+
+# Create groups based on vCenter Tags or Folders
+keyed_groups:
+  - key: config.guestId
+    prefix: os
+  - key: summary.runtime.powerState
+    prefix: state
+
+
+compose:
+  ansible_host: guest.ipAddress
+  ansible_ssh_host: guest.ipAddress
+  ansible_uuid: 99999999 | random | to_uuid
+  availablefield: availableField
+  configissue: configIssue
+  configstatus: configStatus
+  customvalue: customValue
+  effectiverole: effectiveRole
+  guestheartbeatstatus: guestHeartbeatStatus
+  layoutex: layoutEx
+  overallstatus: overallStatus
+  parentvapp: parentVApp
+  recenttask: recentTask
+  resourcepool: resourcePool
+  rootsnapshot: rootSnapshot
+  triggeredalarmstate: triggeredAlarmState
+filters:
+- runtime.powerState == "poweredOn"
+keyed_groups:
+- key: config.guestId
+  prefix: ''
+  separator: ''
+- key: '"templates" if config.template else "guests"'
+  prefix: ''
+  separator: ''
+
+properties:
+- availableField
+- configIssue
+- configStatus
+- customValue
+- datastore
+- effectiveRole
+- guestHeartbeatStatus
+- layout
+- layoutEx
+- name
+- network
+- overallStatus
+- parentVApp
+- permission
+- recentTask
+- resourcePool
+- rootSnapshot
+- snapshot
+- triggeredAlarmState
+- value
+- capability
+- config
+- guest
+- runtime
+- storage
+- summary
+strict: false
+with_nested_properties: true

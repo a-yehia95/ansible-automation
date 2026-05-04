@@ -1,0 +1,16 @@
+---
+# ==============================================================================
+# Hardware Role - Handlers
+# ==============================================================================
+
+- name: Refresh VM hardware configuration
+  debug:
+    msg: "VM hardware configuration refreshed"
+
+- name: Recalculate cluster capacity
+  debug:
+    msg: "Cluster capacity recalculated"
+
+- name: Update DRS recommendations
+  debug:
+    msg: "DRS recommendations updated"

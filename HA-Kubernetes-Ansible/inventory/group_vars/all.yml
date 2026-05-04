@@ -1,0 +1,68 @@
+---
+# ==============================================================================
+# Global Variables for All Hosts
+# ==============================================================================
+
+# Operating System
+os_version: "rhel9"
+
+# Kernel and OS Parameters
+sysctl_params:
+  net.ipv4.ip_forward: 1
+  net.bridge.bridge-nf-call-iptables: 1
+  net.bridge.bridge-nf-call-ip6tables: 1
+  vm.swappiness: 0
+  fs.file-max: 2097152
+  net.core.somaxconn: 32768
+  net.ipv4.ip_local_port_range: "1024 65535"
+
+# SELinux Configuration
+selinux_state: permissive
+selinux_policy: targeted
+
+# Swap Configuration
+disable_swap: true
+
+# Firewall Configuration
+firewalld_enabled: true
+firewalld_state: started
+
+# Package Updates
+enable_package_update: true
+
+# Kubernetes Ports to Open in Firewall
+kubernetes_ports_tcp:
+  - 6443    # API Server
+  - 2379    # etcd
+  - 2380    # etcd peer
+  - 10250   # Kubelet
+  - 10251   # Scheduler
+  - 10252   # Controller Manager
+  - 10255   # Kubelet Read-Only
+  - 30000   # NodePort services (from)
+  - 32767   # NodePort services (to)
+  - 5473    # Calico (BGP)
+
+kubernetes_ports_udp:
+  - 8285    # Flannel VXLAN
+  - 8472    # Flannel VXLAN
+
+# DNS Configuration
+dns_servers:
+  - 8.8.8.8
+  - 8.8.4.4
+
+# Time Synchronization
+enable_chrony: true
+
+# Logging
+log_directory: /var/log/k8s-deployment
+audit_logs_enabled: true
+
+# Container Runtime - cri-o
+crio_repos:
+  - "devel:/main"
+  - "stable:/main"
+
+# Image pull concurrency
+image_pull_parallelism: 10

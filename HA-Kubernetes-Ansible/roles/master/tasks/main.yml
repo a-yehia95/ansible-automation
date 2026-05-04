@@ -1,0 +1,413 @@
+---
+# ==============================================================================
+# MASTER Role Tasks: Kubernetes Control Plane
+# ==============================================================================
+# This role sets up Kubernetes master nodes (control plane)
+# Includes API server, scheduler, controller manager
+
+# ==============================================================================
+# SECTION 1: Generate Kubernetes Control Plane Certificates
+# ==============================================================================
+
+- name: Create temporary directory for certificates
+  file:
+    path: /tmp/k8s-certs
+    state: directory
+    mode: '0700'
+  tags:
+    - master-certs
+
+# Generate Kubernetes API Server certificates
+- name: Generate Kubernetes API server private key
+  openssl_privatekey:
+    path: "{{ ssl_cert_path }}/apiserver-key.pem"
+    size: 2048
+    type: RSA
+    owner: root
+    group: root
+    mode: '0600'
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - master-certs
+    - apiserver-cert
+
+- name: Generate Kubernetes API server CSR
+  openssl_csr:
+    path: "{{ ssl_cert_path }}/apiserver.csr"
+    privatekey_path: "{{ ssl_cert_path }}/apiserver-key.pem"
+    subject_alt_name: "DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:kubernetes.default.svc.{{ cluster_domain }},{% for host in groups['master'] %}DNS:{{ hostvars[host]['ansible_hostname'] }},DNS:{{ hostvars[host]['ansible_default_ipv4']['address'] }},{% endfor %}IP:127.0.0.1,IP:10.96.0.1"
+    common_name: "kubernetes"
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    extended_key_usage:
+      - serverAuth
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - master-certs
+    - apiserver-cert
+
+- name: Generate Kubernetes API server certificate
+  openssl_certificate:
+    path: "{{ ssl_cert_path }}/apiserver.pem"
+    csr_path: "{{ ssl_cert_path }}/apiserver.csr"
+    ownca_path: "{{ ssl_cert_path }}/ca.pem"
+    ownca_privatekey_path: "{{ ssl_cert_path }}/ca-key.pem"
+    provider: ownca
+    owner: root
+    group: root
+    mode: '0644'
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - master-certs
+    - apiserver-cert
+
+# Generate Kubelet certificates for control plane
+- name: Generate control plane kubelet private key
+  openssl_privatekey:
+    path: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}-key.pem"
+    size: 2048
+    type: RSA
+    owner: root
+    group: root
+    mode: '0600'
+  tags:
+    - master-certs
+    - kubelet-cert
+
+- name: Generate control plane kubelet CSR
+  openssl_csr:
+    path: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.csr"
+    privatekey_path: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}-key.pem"
+    subject_alt_name: "DNS:{{ inventory_hostname }},DNS:{{ ansible_hostname }},IP:{{ ansible_default_ipv4.address }}"
+    common_name: "system:node:{{ inventory_hostname }}"
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    extended_key_usage:
+      - serverAuth
+      - clientAuth
+  tags:
+    - master-certs
+    - kubelet-cert
+
+- name: Generate control plane kubelet certificate
+  openssl_certificate:
+    path: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.pem"
+    csr_path: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.csr"
+    ownca_path: "{{ ssl_cert_path }}/ca.pem"
+    ownca_privatekey_path: "{{ ssl_cert_path }}/ca-key.pem"
+    provider: ownca
+    owner: root
+    group: root
+    mode: '0644'
+  tags:
+    - master-certs
+    - kubelet-cert
+
+# ==============================================================================
+# SECTION 2: Generate Kubelet kubeconfig
+# ==============================================================================
+
+- name: Create kubelet kubeconfig
+  shell: |
+    kubectl config set-cluster kubernetes \
+      --certificate-authority={{ ssl_cert_path }}/ca.pem \
+      --embed-certs=true \
+      --server=https://{{ loadbalancer_vip }}:6443 \
+      --kubeconfig=/var/lib/kubelet/kubeconfig
+
+    kubectl config set-credentials system:node:{{ inventory_hostname }} \
+      --client-certificate={{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.pem \
+      --client-key={{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}-key.pem \
+      --embed-certs=true \
+      --kubeconfig=/var/lib/kubelet/kubeconfig
+
+    kubectl config set-context default \
+      --cluster=kubernetes \
+      --user=system:node:{{ inventory_hostname }} \
+      --kubeconfig=/var/lib/kubelet/kubeconfig
+
+    kubectl config use-context default --kubeconfig=/var/lib/kubelet/kubeconfig
+  tags:
+    - master-kubeconfig
+
+# ==============================================================================
+# SECTION 3: Initialize Kubernetes with kubeadm
+# ==============================================================================
+
+- name: Create kubeadm config file
+  template:
+    src: kubeadm-config.j2
+    dest: /tmp/kubeadm-config.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  tags:
+    - kubeadm-init
+
+- name: Initialize first Kubernetes master with kubeadm
+  shell: |
+    kubeadm init \
+      --config=/tmp/kubeadm-config.yaml \
+      --upload-certs \
+      --skip-token-print
+  register: kubeadm_init_result
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - kubeadm-init
+
+- name: Store kubeadm join token and certificate key
+  set_fact:
+    kubeadm_token: "{{ kubeadm_init_result.stdout | regex_search('--token\\s+(\\S+)', '\\1') | first }}"
+    certificate_key: "{{ kubeadm_init_result.stdout | regex_search('--certificate-key\\s+(\\S+)', '\\1') | first }}"
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - kubeadm-init
+
+# Save token and key for other masters
+- name: Fetch kubeadm token from first master
+  fetch:
+    src: /tmp/kubeadm-config.yaml
+    dest: /tmp/kubeadm-output.txt
+    flat: yes
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - kubeadm-init
+
+- name: Setup kubeconfig for root user
+  shell: |
+    mkdir -p $HOME/.kube
+    cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+    chown $(id -u):$(id -g) $HOME/.kube/config
+  environment:
+    HOME: /root
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - kubeconfig
+
+- name: Wait for API server to be ready
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      get nodes --no-headers 2>/dev/null || echo "waiting"
+  retries: 30
+  delay: 10
+  register: api_ready
+  until: api_ready.rc == 0
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - kubeadm-init
+    - verify
+
+# ==============================================================================
+# SECTION 4: Join Additional Master Nodes
+# ==============================================================================
+
+- name: Generate kubeadm join command for additional masters
+  shell: |
+    kubeadm token create --print-join-command
+  register: kubeadm_join_command
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - kubeadm-join
+
+- name: Store join command
+  set_fact:
+    join_command: "{{ kubeadm_join_command.stdout }}"
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - kubeadm-join
+
+- name: Join additional master nodes
+  shell: |
+    {{ hostvars[groups['master'][0]]['join_command'] }} \
+      --control-plane \
+      --certificate-key={% for key in groups['master'][0] %}{{ hostvars[groups['master'][0]]['certificate_key'] }}{% endfor %}
+  when: 
+    - inventory_hostname != groups['master'][0]
+    - inventory_hostname in groups['master']
+  register: kubeadm_join_result
+  tags:
+    - kubeadm-join
+
+# ==============================================================================
+# SECTION 5: Configure kubelet for master nodes
+# ==============================================================================
+
+- name: Create kubelet kubeconfig for masters
+  copy:
+    content: |
+      apiVersion: v1
+      kind: Config
+      clusters:
+      - cluster:
+          certificate-authority: {{ ssl_cert_path }}/ca.pem
+          server: https://{{ ansible_default_ipv4.address }}:6443
+        name: kubernetes
+      contexts:
+      - context:
+          cluster: kubernetes
+          user: system:kubelet:{{ inventory_hostname }}
+        name: default
+      current-context: default
+      users:
+      - name: system:kubelet:{{ inventory_hostname }}
+        user:
+          client-certificate: {{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.pem
+          client-key: {{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}-key.pem
+    dest: /var/lib/kubelet/kubeconfig
+    owner: root
+    group: root
+    mode: '0644'
+  tags:
+    - master-kubelet-config
+
+- name: Configure kubelet for masters
+  copy:
+    content: |
+      apiVersion: kubelet.config.k8s.io/v1beta1
+      kind: KubeletConfiguration
+      address: 0.0.0.0
+      port: 10250
+      cgroupDriver: systemd
+      clusterDNS:
+      - {{ cluster_dns }}
+      clusterDomain: {{ cluster_domain }}
+      failSwapOn: true
+      makeIPTablesUtilChains: true
+      serverTLSBootstrap: false
+      tlsCertFile: {{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.pem
+      tlsPrivateKeyFile: {{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}-key.pem
+    dest: /var/lib/kubelet/kubelet-config.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart kubelet
+  tags:
+    - master-kubelet-config
+
+# ==============================================================================
+# SECTION 6: Start kubelet on master nodes
+# ==============================================================================
+
+- name: Start and enable kubelet on masters
+  systemd:
+    name: kubelet
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  tags:
+    - master-kubelet-start
+
+- name: Wait for master nodes to be ready
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      get nodes {{ inventory_hostname }} 2>/dev/null | grep -i "ready"
+  retries: 30
+  delay: 10
+  register: master_ready
+  until: master_ready.rc == 0
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - master-kubelet-start
+    - verify
+
+# ==============================================================================
+# SECTION 7: Install CNI Plugin (Flannel)
+# ==============================================================================
+
+- name: Deploy Flannel CNI plugin
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+  when: inventory_hostname == groups['master'][0]
+  retries: 3
+  delay: 10
+  tags:
+    - cni-plugin
+    - flannel
+
+- name: Wait for Flannel pods to be ready
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      get pods -n kube-flannel -o jsonpath='{.items[*].status.phase}' | grep -c "Running" || echo "0"
+  retries: 30
+  delay: 10
+  register: flannel_ready
+  until: flannel_ready.stdout | int > 0
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - cni-plugin
+    - flannel
+    - verify
+
+# ==============================================================================
+# SECTION 8: Deploy CoreDNS (Cluster DNS)
+# ==============================================================================
+
+- name: Verify CoreDNS is running
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      get deployment coredns -n kube-system 2>/dev/null || echo "deploying"
+  retries: 20
+  delay: 5
+  register: coredns_status
+  until: coredns_status.rc == 0
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - coredns
+    - verify
+
+# ==============================================================================
+# SECTION 9: Setup RBAC and Cluster Configuration
+# ==============================================================================
+
+- name: Create admin role binding
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      create clusterrolebinding cluster-admin-binding \
+      --clusterrole=cluster-admin \
+      --user=system:kube-apiserver 2>/dev/null || true
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - rbac
+
+# ==============================================================================
+# SECTION 10: Verify Master Nodes
+# ==============================================================================
+
+- name: Get cluster nodes
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      get nodes -o wide
+  register: cluster_nodes
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - verify
+    - always
+
+- name: Display cluster nodes
+  debug:
+    msg: "{{ cluster_nodes.stdout_lines }}"
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - verify
+    - always
+
+- name: Get cluster components status
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      get componentstatuses
+  register: cluster_components
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - verify
+    - always
+
+- name: Display cluster components
+  debug:
+    msg: "{{ cluster_components.stdout_lines }}"
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - verify
+    - always

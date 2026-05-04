@@ -1,0 +1,171 @@
+---
+# ==============================================================================
+# VM Customization Role - Tasks
+# ==============================================================================
+# Applies customization specs (IP, hostname, DNS) after VM cloning
+
+- name: Display VM customization information
+  debug:
+    msg:
+      - "=========================================="
+      - "VM Customization (IP, Hostname, DNS)"
+      - "=========================================="
+      - "VM Name: {{ vm_name }}"
+      - "Datacenter: {{ datacenter_name }}"
+      - "=========================================="
+  tags:
+    - day1
+    - provisioning
+    - customization
+    - always
+
+# ==============================================================================
+# Linux VM Customization
+# ==============================================================================
+
+- name: Customize Linux VM - Hostname and DNS
+  vmware_guest_customization_facts:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+  delegate_to: localhost
+  when: vm_os_type | default('linux') == 'linux'
+  tags:
+    - day1
+    - provisioning
+    - customization
+    - linux
+
+- name: Configure Linux network settings via VMware customization
+  vmware_guest:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    customization:
+      hostname: "{{ vm_hostname | default(vm_name) }}"
+      domain: "{{ vm_domain | default('example.com') }}"
+      dns_servers: "{{ dns_servers }}"
+      dns_suffix:
+        - "{{ vm_domain | default('example.com') }}"
+  delegate_to: localhost
+  when: vm_os_type | default('linux') == 'linux'
+  tags:
+    - day1
+    - provisioning
+    - customization
+    - linux
+
+# ==============================================================================
+# Windows VM Customization
+# ==============================================================================
+
+- name: Configure Windows network settings
+  vmware_guest:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    customization:
+      hostname: "{{ vm_hostname | default(vm_name) }}"
+      domain: "{{ vm_domain | default('example.com') }}"
+      dns_servers: "{{ dns_servers }}"
+      autologon: "{{ windows_autologon | default(false) }}"
+      autologon_count: "{{ windows_autologon_count | default(1) }}"
+  delegate_to: localhost
+  when: vm_os_type | default('') == 'windows'
+  tags:
+    - day1
+    - provisioning
+    - customization
+    - windows
+
+# ==============================================================================
+# Static IP Configuration (if provided)
+# ==============================================================================
+
+- name: Configure static IP address
+  vmware_guest_network:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    networks:
+      - name: "{{ vm_network_name }}"
+        ip: "{{ vm_ip_address }}"
+        netmask: "{{ vm_netmask }}"
+        gateway: "{{ vm_gateway }}"
+        dns_servers: "{{ dns_servers }}"
+  delegate_to: localhost
+  when:
+    - vm_ip_address is defined
+    - vm_ip_address != ''
+  tags:
+    - day1
+    - provisioning
+    - customization
+    - network
+
+# ==============================================================================
+# NTP Configuration
+# ==============================================================================
+
+- name: Display NTP configuration
+  debug:
+    msg:
+      - "Configuring NTP Server: {{ ntp_server }}"
+      - "Note: NTP configuration is typically done via VM OS, not VMware"
+  tags:
+    - day1
+    - provisioning
+    - customization
+    - ntp
+    - always
+
+# ==============================================================================
+# Verify Customization
+# ==============================================================================
+
+- name: Verify customization completed
+  vmware_guest_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+  delegate_to: localhost
+  register: customized_vm_info
+  tags:
+    - day1
+    - provisioning
+    - customization
+    - verify
+
+- name: Display customization results
+  debug:
+    msg:
+      - "VM Customization Complete:"
+      - "Hostname: {{ customized_vm_info.instance.hw_name }}"
+      - "IP Address: {{ customized_vm_info.instance.ipv4 }}"
+      - "Guest State: {{ customized_vm_info.instance.guest_state }}"
+  tags:
+    - day1
+    - provisioning
+    - customization
+    - verify
+    - always

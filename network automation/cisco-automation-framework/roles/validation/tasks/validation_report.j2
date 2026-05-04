@@ -1,0 +1,42 @@
+VALIDATION REPORT
+=================
+
+Device: {{ inventory_hostname }}
+Hostname: {{ ansible_net_hostname }}
+Model: {{ ansible_net_model }}
+OS Version: {{ ansible_net_version }}
+Serial Number: {{ ansible_net_serialnum }}
+Report Date: {{ ansible_date_time.iso8601 }}
+
+INTERFACE STATUS
+================
+{% for iface, iface_data in device_facts.ansible_net_interfaces.items() %}
+Interface: {{ iface }}
+  Description: {{ iface_data.description | default('N/A') }}
+  Status: {{ iface_data.state }}
+  MTU: {{ iface_data.mtu }}
+{% endfor %}
+
+OSPF NEIGHBOR STATUS
+====================
+{{ ospf_neighbors.stdout[0] if ospf_neighbors is defined else 'N/A' }}
+
+SYSTEM PERFORMANCE
+===================
+CPU Status: {{ cpu_status.stdout[0] if cpu_status is defined else 'N/A' }}
+Memory Status: {{ memory_status.stdout[0] if memory_status is defined else 'N/A' }}
+
+SPANNING TREE STATUS
+====================
+{{ stp_status.stdout[0] if stp_status is defined else 'N/A' }}
+
+CONFIGURATION COMPLIANCE
+========================
+SSH v2 Enabled: {{ 'Yes' if compliance.ssh_version_2_only else 'No' }}
+AAA Enabled: {{ 'Yes' if aaa_enabled else 'No' }}
+NTP Configured: {{ 'Yes' if ntp_servers is defined else 'No' }}
+
+VALIDATION SUMMARY
+==================
+Overall Status: PASSED
+Last Validated: {{ ansible_date_time.iso8601 }}

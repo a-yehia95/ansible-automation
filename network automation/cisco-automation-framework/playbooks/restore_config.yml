@@ -1,0 +1,85 @@
+---
+# ============================================================================
+# Playbook: Configuration Restore
+# Restores device configuration from backup
+# ============================================================================
+
+- name: "Restore Device Configuration from Backup"
+  hosts: ios_devices
+  gather_facts: false
+  connection: network_cli
+  serial: 1  # One device at a time
+
+  vars:
+    restore_backup_file: "{{ restore_backup_path }}"
+
+  pre_tasks:
+    - name: Validate backup file exists
+      stat:
+        path: "{{ restore_backup_file }}"
+      register: backup_file
+      delegate_to: localhost
+      failed_when: not backup_file.stat.exists
+      tags:
+        - restore
+        - pre_check
+
+    - name: Create pre-restore backup
+      cisco.ios.ios_command:
+        commands:
+          - "show running-config"
+      register: pre_restore_config
+      tags:
+        - restore
+        - backup
+
+    - name: Save pre-restore backup
+      copy:
+        content: |
+          ! Pre-Restore Backup
+          ! Date: {{ ansible_date_time.iso8601 }}
+          {{ pre_restore_config.stdout[0] }}
+        dest: "./backups/PRE_RESTORE_{{ inventory_hostname }}_{{ ansible_date_time.epoch }}.cfg"
+      delegate_to: localhost
+      tags:
+        - restore
+        - backup
+
+  tasks:
+    - name: Read backup configuration file
+      set_fact:
+        backup_config_lines: "{{ lookup('file', restore_backup_file).split('\n') }}"
+      tags:
+        - restore
+
+    - name: Apply configuration from backup
+      cisco.ios.ios_config:
+        lines: "{{ backup_config_lines }}"
+        match: none
+      tags:
+        - restore
+
+    - name: Save configuration
+      cisco.ios.ios_command:
+        commands:
+          - "write memory"
+      tags:
+        - restore
+        - save_config
+
+  post_tasks:
+    - name: Verify restored configuration
+      cisco.ios.ios_command:
+        commands:
+          - "show running-config | include hostname"
+      register: post_restore_check
+      tags:
+        - restore
+        - verification
+
+    - name: Display restore status
+      debug:
+        msg: "Configuration restore completed for {{ inventory_hostname }}"
+      tags:
+        - restore
+        - reporting

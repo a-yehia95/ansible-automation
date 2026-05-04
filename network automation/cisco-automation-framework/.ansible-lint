@@ -1,0 +1,39 @@
+# Ansible Lint Configuration
+
+---
+# Ansible-lint configuration file
+# Run: ansible-lint
+
+extends: default
+
+rules:
+  # Enable only critical rules
+  indentation:
+    spaces: 2
+  line-length:
+    max: 200
+  comments:
+    min-spaces-from-content: 2
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no']
+
+# Files to exclude
+exclude_paths:
+  - .git
+  - .venv
+  - venv
+  - roles/*/tests/
+
+# Ignore specific rules if needed
+skip_list:
+  - 'name[casing]'  # Allow mixed case in names
+  - 'role-name'     # Allow underscores in role names
+
+# Warn on task-level files
+mock_modules:
+  - name: cisco.ios.ios_command
+  - name: cisco.ios.ios_config
+  - name: cisco.ios.ios_facts
+  - name: cisco.fmc.fmc_access_policies
+  - name: ansible.netcommon.restconf_get
+  - name: ansible.netcommon.restconf_post

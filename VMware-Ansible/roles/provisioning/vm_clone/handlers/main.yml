@@ -1,0 +1,12 @@
+---
+# ==============================================================================
+# VM Clone Role - Handlers
+# ==============================================================================
+
+- name: Refresh VM inventory
+  debug:
+    msg: "VM inventory refreshed"
+
+- name: Recalculate cluster resources after clone
+  debug:
+    msg: "Cluster resources recalculated after VM clone"

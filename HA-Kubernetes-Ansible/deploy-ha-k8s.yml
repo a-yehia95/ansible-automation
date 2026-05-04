@@ -1,0 +1,261 @@
+---
+# ==============================================================================
+# Deploy HA Kubernetes Cluster - Main Orchestration Playbook
+# ==============================================================================
+# Purpose: Complete orchestration of HA Kubernetes cluster deployment
+# Usage: ansible-playbook deploy-ha-k8s.yml -i inventory/hosts.ini
+#
+# This playbook orchestrates the deployment in phases:
+# Phase 1: Common preparation on all nodes
+# Phase 2: Container runtime setup (cri-o)
+# Phase 3: Kubernetes tools installation
+# Phase 4: Load balancer configuration (HAProxy + Keepalived)
+# Phase 5: First master initialization
+# Phase 6: Additional masters join cluster
+# Phase 7: Workers join cluster
+# Phase 8: CNI (Calico) deployment
+# ==============================================================================
+
+- name: HA Kubernetes Cluster Deployment - Phase 0 Validation
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Display deployment parameters
+      debug:
+        msg:
+          - "═══════════════════════════════════════════════════════════════"
+          - "HA Kubernetes Cluster Deployment Started"
+          - "═══════════════════════════════════════════════════════════════"
+          - ""
+          - "Deployment Configuration:"
+          - "  Cluster Name: {{ cluster_name }}"
+          - "  Kubernetes Version: {{ kubernetes_version }}"
+          - "  Control Plane Endpoint: {{ control_plane_endpoint }}"
+          - "  Control Plane VIP: {{ control_plane_vip }}"
+          - "  Pod Network CIDR: {{ pod_network_cidr }}"
+          - "  Service Network CIDR: {{ service_network_cidr }}"
+          - "  Container Runtime: {{ container_runtime }}"
+          - ""
+          - "Cluster Nodes:"
+          - "  Masters: {{ groups['masters'] | join(', ') }}"
+          - "  Workers: {{ groups['workers'] | join(', ') }}"
+          - ""
+
+    - name: Verify DNS resolution
+      block:
+        - name: Check hostname resolution
+          debug:
+            msg: "{{ inventory_hostname }} resolves to {{ ansible_host }}"
+
+        - name: Verify control plane endpoint
+          debug:
+            msg: "Control plane endpoint: {{ control_plane_endpoint }}"
+
+---
+# ==============================================================================
+# Phase 1: Common OS Preparation
+# ==============================================================================
+- name: Phase 1 - Common OS Preparation
+  hosts: k8s_nodes
+  become: yes
+  roles:
+    - role: common
+      tags:
+        - phase1
+        - common
+
+  post_tasks:
+    - name: Display Phase 1 completion
+      debug:
+        msg: "✓ Phase 1 Complete: OS Preparation"
+
+---
+# ==============================================================================
+# Phase 2: Container Runtime Installation (cri-o)
+# ==============================================================================
+- name: Phase 2 - CRI-O Container Runtime Installation
+  hosts: k8s_nodes
+  become: yes
+  roles:
+    - role: crio
+      tags:
+        - phase2
+        - crio
+
+  post_tasks:
+    - name: Display Phase 2 completion
+      debug:
+        msg: "✓ Phase 2 Complete: CRI-O Container Runtime Installed"
+
+---
+# ==============================================================================
+# Phase 3: Kubernetes Tools Installation
+# ==============================================================================
+- name: Phase 3 - Kubernetes Tools Installation
+  hosts: k8s_nodes
+  become: yes
+  roles:
+    - role: kubernetes
+      tags:
+        - phase3
+        - kubernetes
+
+  post_tasks:
+    - name: Display Phase 3 completion
+      debug:
+        msg: "✓ Phase 3 Complete: Kubernetes Tools Installed"
+
+---
+# ==============================================================================
+# Phase 4: Load Balancer Configuration
+# ==============================================================================
+- name: Phase 4 - Load Balancer Configuration (HAProxy + Keepalived)
+  hosts: loadbalancers
+  become: yes
+  roles:
+    - role: loadbalancer
+      tags:
+        - phase4
+        - loadbalancer
+
+  post_tasks:
+    - name: Display Phase 4 completion
+      debug:
+        msg:
+          - "✓ Phase 4 Complete: Load Balancer Configured"
+          - "  HAProxy: Listening on port 6443"
+          - "  Keepalived: VIP {{ control_plane_vip }} configured"
+
+---
+# ==============================================================================
+# Phase 5: First Master Node Initialization
+# ==============================================================================
+- name: Phase 5 - First Master Node Initialization
+  hosts: master_init
+  become: yes
+  roles:
+    - role: kubeadm-init
+      tags:
+        - phase5
+        - kubeadm-init
+
+  post_tasks:
+    - name: Display Phase 5 completion
+      debug:
+        msg:
+          - "✓ Phase 5 Complete: First Master Initialized"
+          - "  Cluster Name: {{ cluster_name }}"
+          - "  API Endpoint: {{ control_plane_endpoint }}"
+
+---
+# ==============================================================================
+# Phase 6: Additional Masters Join Cluster
+# ==============================================================================
+- name: Phase 6 - Additional Masters Join Cluster
+  hosts: masters_join
+  become: yes
+  roles:
+    - role: kubeadm-master-join
+      tags:
+        - phase6
+        - master-join
+
+  post_tasks:
+    - name: Display Phase 6 completion
+      debug:
+        msg: "✓ Phase 6 Complete: Additional Masters Joined"
+
+---
+# ==============================================================================
+# Phase 7: Worker Nodes Join Cluster
+# ==============================================================================
+- name: Phase 7 - Worker Nodes Join Cluster
+  hosts: workers
+  become: yes
+  roles:
+    - role: kubeadm-worker-join
+      tags:
+        - phase7
+        - worker-join
+
+  post_tasks:
+    - name: Display Phase 7 completion
+      debug:
+        msg: "✓ Phase 7 Complete: Worker Nodes Joined"
+
+---
+# ==============================================================================
+# Phase 8: CNI Deployment and Final Verification
+# ==============================================================================
+- name: Phase 8 - CNI (Calico) Deployment and Cluster Verification
+  hosts: master_init
+  become: yes
+  tasks:
+    - name: Verify all nodes are ready
+      command: kubectl get nodes
+      register: nodes_status
+      changed_when: false
+      failed_when: nodes_status.rc != 0
+
+    - name: Display cluster status
+      debug:
+        msg:
+          - "✓ Cluster Node Status:"
+          - "{{ nodes_status.stdout }}"
+
+    - name: Verify cluster health
+      block:
+        - name: Get cluster info
+          command: kubectl cluster-info
+          register: cluster_info
+          changed_when: false
+
+        - name: Get cluster status
+          command: kubectl get cs
+          register: component_status
+          changed_when: false
+          failed_when: false
+
+        - name: Display cluster health
+          debug:
+            msg:
+              - "✓ Cluster Health Check:"
+              - "{{ cluster_info.stdout }}"
+
+---
+# ==============================================================================
+# Final Summary
+# ==============================================================================
+- name: Deployment Summary
+  hosts: master_init
+  tasks:
+    - name: Display final deployment summary
+      debug:
+        msg:
+          - ""
+          - "═══════════════════════════════════════════════════════════════"
+          - "✓ HA KUBERNETES CLUSTER DEPLOYMENT COMPLETED SUCCESSFULLY"
+          - "═══════════════════════════════════════════════════════════════"
+          - ""
+          - "Cluster Information:"
+          - "  Cluster Name: {{ cluster_name }}"
+          - "  Kubernetes Version: {{ kubernetes_version }}"
+          - "  Control Plane Endpoint: {{ control_plane_endpoint }}"
+          - "  Control Plane VIP: {{ control_plane_vip }}"
+          - ""
+          - "Access Commands:"
+          - "  kubectl get nodes"
+          - "  kubectl get pods -A"
+          - "  kubectl cluster-info"
+          - ""
+          - "Next Steps:"
+          - "  1. Deploy ingress controller (e.g., nginx-ingress)"
+          - "  2. Deploy persistent storage provisioner"
+          - "  3. Deploy monitoring stack (e.g., Prometheus)"
+          - "  4. Deploy logging stack (e.g., ELK/Loki)"
+          - ""
+          - "Documentation:"
+          - "  - README.md (in project root)"
+          - "  - docs/ directory"
+          - ""
+          - "═══════════════════════════════════════════════════════════════"

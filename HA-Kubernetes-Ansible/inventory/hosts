@@ -1,0 +1,118 @@
+# ==============================================================================
+# Kubernetes HA Cluster Inventory
+# ==============================================================================
+# Define your hosts and groups here
+# Adjust IP addresses and hostnames to match your environment
+
+[all:vars]
+# Ansible connection settings
+ansible_user=root
+ansible_password=YourPassword  # Or use SSH key authentication
+ansible_port=22
+
+# ==============================================================================
+# ETCD Nodes Group
+# ==============================================================================
+# Highly available etcd cluster (odd number: 3, 5, 7...)
+[etcd]
+k8s-etcd-1 ansible_host=10.0.0.10 ansible_hostname=k8s-etcd-1
+k8s-etcd-2 ansible_host=10.0.0.11 ansible_hostname=k8s-etcd-2
+k8s-etcd-3 ansible_host=10.0.0.12 ansible_hostname=k8s-etcd-3
+
+[etcd:vars]
+etcd_version=3.5.9
+
+# ==============================================================================
+# Kubernetes Master (Control Plane) Nodes
+# ==============================================================================
+# Multiple masters for high availability (odd number: 3, 5...)
+[master]
+k8s-master-1 ansible_host=10.0.0.20 ansible_hostname=k8s-master-1
+k8s-master-2 ansible_host=10.0.0.21 ansible_hostname=k8s-master-2
+k8s-master-3 ansible_host=10.0.0.22 ansible_hostname=k8s-master-3
+
+[master:vars]
+# Master specific variables can be added here
+
+# ==============================================================================
+# Kubernetes Worker (Compute) Nodes
+# ==============================================================================
+# Worker nodes can be any number (1 or more)
+[worker]
+k8s-worker-1 ansible_host=10.0.0.30 ansible_hostname=k8s-worker-1
+k8s-worker-2 ansible_host=10.0.0.31 ansible_hostname=k8s-worker-2
+k8s-worker-3 ansible_host=10.0.0.32 ansible_hostname=k8s-worker-3
+
+[worker:vars]
+# Worker specific variables can be added here
+
+# ==============================================================================
+# Load Balancer Nodes (for HA Control Plane)
+# ==============================================================================
+# Minimum 2 for high availability
+[loadbalancer]
+k8s-lb-1 ansible_host=10.0.0.40 ansible_hostname=k8s-lb-1
+k8s-lb-2 ansible_host=10.0.0.41 ansible_hostname=k8s-lb-2
+
+[loadbalancer:vars]
+# Virtual IP address (shared floating IP)
+loadbalancer_vip=10.0.0.100
+# Network interface for VIP
+loadbalancer_interface=eth0
+
+# ==============================================================================
+# Node Groups
+# ==============================================================================
+# All Kubernetes nodes (masters + workers)
+[k8s_nodes:children]
+master
+worker
+
+# All infrastructure nodes
+[infrastructure:children]
+etcd
+loadbalancer
+
+# All nodes in the deployment
+[all_nodes:children]
+etcd
+master
+worker
+loadbalancer
+
+# ==============================================================================
+# Regional/Environment Groups
+# ==============================================================================
+# Organize by environment
+[production:children]
+etcd
+master
+worker
+loadbalancer
+
+# ==============================================================================
+# Examples for AWS Environments
+# ==============================================================================
+# Uncomment and modify for AWS environments
+# [etcd]
+# k8s-etcd-1 ansible_host=10.0.0.10 ec2_instance_type=t3.medium
+# k8s-etcd-2 ansible_host=10.0.0.11 ec2_instance_type=t3.medium
+# k8s-etcd-3 ansible_host=10.0.0.12 ec2_instance_type=t3.medium
+
+# ==============================================================================
+# Examples for On-Premises Environments
+# ==============================================================================
+# For physical servers, use your datacenter network information
+# [etcd]
+# k8s-etcd-1 ansible_host=192.168.1.10
+# k8s-etcd-2 ansible_host=192.168.1.11
+# k8s-etcd-3 ansible_host=192.168.1.12
+
+# ==============================================================================
+# Examples for vSphere Environment
+# ==============================================================================
+# For vSphere VMs:
+# [etcd]
+# k8s-etcd-1 ansible_host=172.20.0.10 vsphere_vm_name=k8s-etcd-1
+# k8s-etcd-2 ansible_host=172.20.0.11 vsphere_vm_name=k8s-etcd-2
+# k8s-etcd-3 ansible_host=172.20.0.12 vsphere_vm_name=k8s-etcd-3

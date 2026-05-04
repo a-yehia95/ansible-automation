@@ -1,0 +1,150 @@
+---
+# ============================================================================
+# Host Variables: Core Switch 01
+# ============================================================================
+
+# Device Identification
+device_name: core-switch-01
+device_role: core_switch
+device_site: datacenter-primary
+device_location: "Building A, Floor 3, Rack 12"
+device_model: Cisco Catalyst 9200L
+device_serial: "FCW1234A5678"
+managed_by: fmc_enabled
+
+# System Configuration (Day 0)
+hostname: core-switch-01
+system_config:
+  enable_password: "{{ core_switch_01_enable_pass }}"  # Use Vault
+  login_banner: |
+    ###########################################################
+    #                    AUTHORIZED USE ONLY                 #
+    #  Unauthorized access to this system is forbidden and   #
+    #  will be prosecuted by law. By accessing this system,  #
+    #  you agree that your actions may be monitored.         #
+    ###########################################################
+
+# Interface Configuration (Day 1)
+interfaces:
+  - name: GigabitEthernet1/0/1
+    description: "Uplink to distribution-router-01"
+    enabled: true
+    mode: routed
+    ip_address: 10.1.1.1
+    subnet_mask: 255.255.255.0
+    mtu: 1500
+    speed: 1000
+    duplex: full
+
+  - name: GigabitEthernet1/0/2
+    description: "Uplink to core-switch-02"
+    enabled: true
+    mode: trunk
+    trunk_vlans: "1,100,200,300"
+    allowed_vlans: all
+
+  - name: GigabitEthernet1/0/3
+    description: "Access port - Server A"
+    enabled: true
+    mode: access
+    access_vlan: 100
+    spanning_tree_portfast: true
+
+  - name: GigabitEthernet1/0/4
+    description: "Access port - Server B"
+    enabled: true
+    mode: access
+    access_vlan: 100
+    spanning_tree_portfast: true
+
+  - name: TenGigabitEthernet1/0/1
+    description: "10G Uplink - Internet Gateway"
+    enabled: true
+    mode: routed
+    ip_address: 10.2.1.1
+    subnet_mask: 255.255.255.0
+
+  - name: Loopback0
+    description: "Loopback Interface"
+    enabled: true
+    ip_address: 10.0.0.1
+    subnet_mask: 255.255.255.255
+
+# VLAN Configuration
+vlans:
+  - vlan_id: 1
+    name: default
+  - vlan_id: 100
+    name: management
+    description: "Management VLAN"
+  - vlan_id: 200
+    name: data
+    description: "Data VLAN"
+  - vlan_id: 300
+    name: voice
+    description: "Voice VLAN"
+
+# Routing Configuration (Day 1)
+routing:
+  ospf:
+    enabled: true
+    process_id: 1
+    router_id: 10.0.0.1
+    networks:
+      - network: 10.0.0.0
+        wildcard: 0.0.0.255
+        area: 0
+      - network: 10.1.0.0
+        wildcard: 0.0.255.255
+        area: 0
+    hello_interval: 10
+    dead_interval: 40
+    priority: 128
+
+# Spanning Tree Configuration
+spanning_tree:
+  enabled: true
+  mode: rapid
+  region_name: "DC-REGION-1"
+  region_version: 1
+  priority: 4096
+
+# AAA Configuration (Day 0)
+aaa_config:
+  new_model: true
+  tacacs_enabled: true
+  default_methods:
+    - tacacs_plus
+    - local
+  console_methods:
+    - local
+
+# NTP Configuration (Day 0)
+ntp_config:
+  enabled: true
+  servers:
+    - 192.168.1.1 (prefer)
+    - 8.8.8.8
+
+# Health Check Thresholds (Day 2)
+health_check:
+  cpu_threshold: 80
+  memory_threshold: 85
+  temperature_threshold: 65
+  interface_down_alert: true
+  ospf_neighbor_timeout: 120  # seconds
+
+# Backup Configuration (Day 2)
+backup:
+  enabled: true
+  frequency: daily
+  time: "02:00"
+  retention_days: 30
+  git_commit_msg: "Daily backup - {{ ansible_date_time.iso8601 }}"
+
+# Compliance & Validation (Day 2)
+compliance:
+  ssh_version_2_only: true
+  password_min_length: 12
+  session_timeout: 300
+  line_logging: true

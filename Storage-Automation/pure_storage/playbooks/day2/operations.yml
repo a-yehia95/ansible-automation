@@ -1,0 +1,201 @@
+---
+# ==============================================================================
+# Pure Storage FlashArray - Day 2: Operations
+# ==============================================================================
+# Purpose: Manage storage operations (snapshots, expand volumes)
+#
+# Prerequisites:
+#   - Day 1 provisioning completed
+#   - Volume exists on array
+#
+# Variables Required (via --extra-vars):
+#   - volume_name: Name of volume to operate on
+#   - operation: "snapshot" or "expand"
+#   - new_size_gb: For expand operation, new size in GB (must be > current)
+#
+# Idempotency: 
+#   - Snapshots: Can be created multiple times (new snapshot each time)
+#   - Expand: Idempotent if size same or smaller (no shrink)
+#
+# Execution: 
+#   ansible-playbook pure_storage/playbooks/day2/operations.yml \
+#     --extra-vars='volume_name=db-volume-01 operation=snapshot'
+# ==============================================================================
+
+- name: Pure Storage FlashArray - Day 2 Operations
+  hosts: pure_storage_flasharray
+  gather_facts: false
+  connection: local
+
+  vars:
+    operation_type: "operations"
+    log_prefix: "[PURE_DAY2]"
+    timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+
+  pre_tasks:
+    - name: Display operation banner
+      debug:
+        msg:
+          - "{{ log_prefix }} Starting Pure Storage Operations"
+          - "{{ log_prefix }} Array: {{ inventory_hostname }}"
+          - "{{ log_prefix }} Volume: {{ volume_name | default('NOT SET') }}"
+          - "{{ log_prefix }} Operation: {{ operation | default('NOT SET') }}"
+
+    - name: Validate required variables
+      block:
+        - name: Assert required operation variables
+          assert:
+            that:
+              - volume_name is defined and volume_name | length > 0
+              - operation is defined and operation in ['snapshot', 'expand']
+              - operation != 'expand' or (new_size_gb is defined and new_size_gb | int > 0)
+            fail_msg: |
+              Missing or invalid required variables for Pure Storage operations:
+              - volume_name: {{ volume_name | default('UNDEFINED') }}
+              - operation: {{ operation | default('UNDEFINED') }} (must be 'snapshot' or 'expand')
+              - new_size_gb: {{ new_size_gb | default('UNDEFINED') }} (required for expand)
+              
+              Usage examples:
+              # Create snapshot
+              ansible-playbook pure_storage/playbooks/day2/operations.yml \
+                --extra-vars='volume_name=db-volume-01 operation=snapshot'
+              
+              # Expand volume
+              ansible-playbook pure_storage/playbooks/day2/operations.yml \
+                --extra-vars='volume_name=db-volume-01 operation=expand new_size_gb=1000'
+            success_msg: "{{ log_prefix }} All required variables validated"
+
+      rescue:
+        - name: Display validation error
+          debug:
+            msg: "{{ log_prefix }} Validation failed - see error above"
+        - name: Fail playbook
+          fail:
+            msg: "Validation failed - required variables missing or invalid"
+
+  tasks:
+    # =========================================================================
+    # Operation 1: Create Snapshot
+    # =========================================================================
+    - name: Create crash-consistent snapshot
+      block:
+        - name: Get current volume information
+          purestorage.flasharray.purefa_volume_info:
+            name: "{{ volume_name }}"
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: volume_info
+          no_log: true
+
+        - name: Verify volume exists
+          assert:
+            that:
+              - not volume_info.failed
+              - volume_info.volume is defined
+            fail_msg: "{{ log_prefix }} Volume {{ volume_name }} not found on array"
+            success_msg: "{{ log_prefix }} Volume {{ volume_name }} found"
+
+        - name: Create snapshot
+          purestorage.flasharray.purefa_snap:
+            name: "{{ volume_name }}{{ pure_snapshot_defaults.suffix }}-{{ timestamp }}"
+            source: "{{ volume_name }}"
+            suffix: "{{ pure_snapshot_defaults.suffix }}"
+            state: present
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: snapshot_result
+          no_log: true
+          when: operation == 'snapshot'
+
+        - name: Display snapshot creation result
+          debug:
+            msg:
+              - "{{ log_prefix }} ✓ Snapshot created successfully"
+              - "{{ log_prefix }} Snapshot: {{ volume_name }}{{ pure_snapshot_defaults.suffix }}-{{ timestamp }}"
+              - "{{ log_prefix }} Source: {{ volume_name }}"
+          when: 
+            - operation == 'snapshot'
+            - snapshot_result is changed
+
+      rescue:
+        - name: Handle snapshot creation failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to create snapshot for volume {{ volume_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "Snapshot creation failed"
+      when: operation == 'snapshot'
+
+    # =========================================================================
+    # Operation 2: Expand Volume
+    # =========================================================================
+    - name: Expand volume to new size
+      block:
+        - name: Get current volume information
+          purestorage.flasharray.purefa_volume_info:
+            name: "{{ volume_name }}"
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: volume_info
+          no_log: true
+
+        - name: Calculate current size in GB
+          set_fact:
+            current_size_gb: "{{ (volume_info.volume[0].provisioned | int / 1024 / 1024 / 1024) | round | int }}"
+
+        - name: Verify expansion is valid
+          assert:
+            that:
+              - new_size_gb | int > current_size_gb | int
+            fail_msg: "{{ log_prefix }} New size ({{ new_size_gb }}GB) must be larger than current size ({{ current_size_gb }}GB)"
+            success_msg: "{{ log_prefix }} Expansion valid: {{ current_size_gb }}GB → {{ new_size_gb }}GB"
+
+        - name: Expand volume
+          purestorage.flasharray.purefa_volume:
+            name: "{{ volume_name }}"
+            size: "{{ new_size_gb }}G"
+            state: present
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: expand_result
+          no_log: true
+
+        - name: Display volume expansion result
+          debug:
+            msg:
+              - "{{ log_prefix }} ✓ Volume expanded successfully"
+              - "{{ log_prefix }} Volume: {{ volume_name }}"
+              - "{{ log_prefix }} Previous size: {{ current_size_gb }}GB"
+              - "{{ log_prefix }} New size: {{ new_size_gb }}GB"
+          when: expand_result is changed
+
+        - name: Display no change notice
+          debug:
+            msg: "{{ log_prefix }} Volume {{ volume_name }} already at size {{ new_size_gb }}GB"
+          when: expand_result is not changed
+
+      rescue:
+        - name: Handle volume expansion failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to expand volume {{ volume_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "Volume expansion failed"
+      when: operation == 'expand'
+
+  post_tasks:
+    - name: Display operation completion
+      debug:
+        msg:
+          - "{{ log_prefix }} ✓ Operation completed successfully"
+          - "{{ log_prefix }} Volume: {{ volume_name }}"
+          - "{{ log_prefix }} Operation: {{ operation }}"
+          - "{{ log_prefix }} Timestamp: {{ timestamp }}"

@@ -1,0 +1,204 @@
+---
+# ============================================================================
+# IOS Config Role - Day 1 Deployment: Layer 2/3 Configuration
+# ============================================================================
+
+# Interface Configuration
+- name: Configure physical interfaces
+  cisco.ios.ios_l3_interfaces:
+    config:
+      - name: "{{ item.name }}"
+        ipv4:
+          - address: "{{ item.ip_address }}"
+            netmask: "{{ item.subnet_mask }}"
+        mtu: "{{ item.mtu | default(1500) }}"
+        enabled: "{{ item.enabled | default(true) }}"
+    state: merged
+  loop: "{{ interfaces }}"
+  when:
+    - interfaces is defined
+    - item.mode == 'routed'
+  tags:
+    - day1
+    - interfaces
+
+- name: Configure interface descriptions and settings
+  cisco.ios.ios_interfaces:
+    config:
+      - name: "{{ item.name }}"
+        description: "{{ item.description }}"
+        enabled: "{{ item.enabled | default(true) }}"
+        mtu: "{{ item.mtu | default(1500) }}"
+        speed: "{{ item.speed | default('auto') }}"
+        duplex: "{{ item.duplex | default('auto') }}"
+    state: merged
+  loop: "{{ interfaces }}"
+  when: interfaces is defined
+  tags:
+    - day1
+    - interfaces
+
+- name: Configure trunk interfaces
+  cisco.ios.ios_l2_interfaces:
+    config:
+      - name: "{{ item.name }}"
+        mode: trunk
+        allowed_vlans: "{{ item.allowed_vlans | default('all') }}"
+        trunk_vlans: "{{ item.trunk_vlans | default(omit) }}"
+        native_vlan: "{{ item.native_vlan | default(1) }}"
+    state: merged
+  loop: "{{ interfaces }}"
+  when:
+    - interfaces is defined
+    - item.mode == 'trunk'
+  tags:
+    - day1
+    - interfaces
+    - vlans
+
+- name: Configure access interfaces
+  cisco.ios.ios_l2_interfaces:
+    config:
+      - name: "{{ item.name }}"
+        mode: access
+        access_vlan: "{{ item.access_vlan }}"
+    state: merged
+  loop: "{{ interfaces }}"
+  when:
+    - interfaces is defined
+    - item.mode == 'access'
+  tags:
+    - day1
+    - interfaces
+    - vlans
+
+- name: Enable Spanning Tree Portfast on access ports
+  cisco.ios.ios_command:
+    commands:
+      - "configure terminal"
+      - "interface {{ item.name }}"
+      - "spanning-tree portfast"
+      - "end"
+  loop: "{{ interfaces }}"
+  when:
+    - interfaces is defined
+    - item.mode == 'access'
+    - item.spanning_tree_portfast | default(false)
+  tags:
+    - day1
+    - spanning_tree
+
+# VLAN Configuration
+- name: Create VLANs
+  cisco.ios.ios_vlans:
+    config:
+      - vlan_id: "{{ item.vlan_id }}"
+        name: "{{ item.name }}"
+        description: "{{ item.description | default(omit) }}"
+        enabled: true
+    state: merged
+  loop: "{{ vlans }}"
+  when: vlans is defined
+  tags:
+    - day1
+    - vlans
+
+# Spanning Tree Configuration
+- name: Configure Spanning Tree Protocol
+  cisco.ios.ios_config:
+    lines:
+      - "spanning-tree mode {{ spanning_tree.mode }}"
+      - "spanning-tree priority {{ spanning_tree.priority }}"
+      - "spanning-tree region-name {{ spanning_tree.region_name }}"
+      - "spanning-tree region-version {{ spanning_tree.region_version }}"
+    match: line
+  when: spanning_tree is defined
+  tags:
+    - day1
+    - spanning_tree
+
+# OSPF Routing Configuration
+- name: Configure OSPF routing
+  cisco.ios.ios_command:
+    commands:
+      - "configure terminal"
+      - "router ospf {{ routing.ospf.process_id }}"
+      - "router-id {{ routing.ospf.router_id }}"
+      - "{% for network in routing.ospf.networks %}network {{ network.network }} {{ network.wildcard }} area {{ network.area }}\n{% endfor %}"
+      - "timers hello {{ routing.ospf.hello_interval }}"
+      - "timers dead {{ routing.ospf.dead_interval }}"
+      - "end"
+  when:
+    - routing is defined
+    - routing.ospf.enabled | bool
+  tags:
+    - day1
+    - routing
+    - ospf
+
+# Interface OSPF Priority
+- name: Configure OSPF interface priority
+  cisco.ios.ios_command:
+    commands:
+      - "configure terminal"
+      - "interface Loopback0"
+      - "ip ospf priority {{ routing.ospf.priority }}"
+      - "end"
+  when:
+    - routing is defined
+    - routing.ospf.enabled | bool
+  tags:
+    - day1
+    - routing
+    - ospf
+
+# Layer 3 Interface VLAN Configuration
+- name: Configure VLAN interface (SVI)
+  cisco.ios.ios_l3_interfaces:
+    config:
+      - name: "Vlan{{ item.vlan_id }}"
+        ipv4:
+          - address: "{{ item.svi_ip | default(omit) }}"
+            netmask: "{{ item.svi_netmask | default(omit) }}"
+    state: merged
+  loop: "{{ vlans }}"
+  when:
+    - vlans is defined
+    - item.svi_ip is defined
+  tags:
+    - day1
+    - vlans
+    - interfaces
+
+# IP Routing
+- name: Enable IP routing
+  cisco.ios.ios_config:
+    lines:
+      - "ip routing"
+    match: line
+  tags:
+    - day1
+    - routing
+
+# DHCP Snooping (for switches)
+- name: Configure DHCP Snooping
+  cisco.ios.ios_config:
+    lines:
+      - "ip dhcp snooping"
+      - "ip dhcp snooping vlan 100"
+      - "ip dhcp snooping trust interface GigabitEthernet1/0/1"
+    match: line
+  when: device_role == 'core_switch'
+  tags:
+    - day1
+    - security
+
+# Save Configuration
+- name: Save IOS configuration
+  cisco.ios.ios_command:
+    commands:
+      - "write memory"
+  when: not ansible_check_mode
+  tags:
+    - day1
+    - save_config

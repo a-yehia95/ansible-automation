@@ -1,0 +1,262 @@
+---
+# ==============================================================================
+# Dell PowerStore - Day 1: Provisioning
+# ==============================================================================
+# Purpose: Provision storage resources (host, LUN, mapping)
+#
+# Prerequisites:
+#   - Ansible Automation Platform with AAP Execution Environment
+#   - Dell PowerStore accessible on network
+#   - Username/password configured in vault
+#
+# Variables Required (via --extra-vars or inventory):
+#   - lun_name: Name of LUN to create
+#   - lun_size_mb: LUN size in MB
+#   - host_iqn: Host IQN for iSCSI discovery (or WWN for FC)
+#   - host_name: ESXi/Linux hostname
+#   - host_protocol: "iSCSI" or "FC" (default: iSCSI)
+#
+# Idempotency: Yes - safe to run multiple times
+# Execution: ansible-playbook dell_powerstore/playbooks/day1/provision.yml
+# ==============================================================================
+
+- name: Dell PowerStore - Day 1 Provisioning
+  hosts: dell_powerstore
+  gather_facts: false
+  connection: local
+
+  vars:
+    operation_type: "provision"
+    log_prefix: "[DELL_DAY1]"
+
+  pre_tasks:
+    - name: Display operation banner
+      debug:
+        msg:
+          - "{{ log_prefix }} Starting Dell PowerStore Provisioning"
+          - "{{ log_prefix }} Array: {{ inventory_hostname }}"
+          - "{{ log_prefix }} LUN: {{ lun_name | default('NOT SET') }}"
+
+    - name: Validate required variables
+      block:
+        - name: Assert required provisioning variables
+          assert:
+            that:
+              - lun_name is defined and lun_name | length > 0
+              - lun_size_mb is defined and lun_size_mb | int > 0
+              - host_iqn is defined and host_iqn | length > 0
+              - host_name is defined and host_name | length > 0
+              - host_protocol is defined and host_protocol in ['iSCSI', 'FC']
+            fail_msg: |
+              Missing required variables for Dell PowerStore provisioning:
+              - lun_name: {{ lun_name | default('UNDEFINED') }}
+              - lun_size_mb: {{ lun_size_mb | default('UNDEFINED') }}
+              - host_iqn: {{ host_iqn | default('UNDEFINED') }}
+              - host_name: {{ host_name | default('UNDEFINED') }}
+              - host_protocol: {{ host_protocol | default('UNDEFINED') }} (iSCSI or FC)
+              
+              Usage example:
+              ansible-playbook dell_powerstore/playbooks/day1/provision.yml \
+                --extra-vars='lun_name=db-lun-01 \
+                             lun_size_mb=512000 \
+                             host_iqn=iqn.1991-05.com.example:esx01 \
+                             host_name=esx-01 \
+                             host_protocol=iSCSI'
+            success_msg: "{{ log_prefix }} All required variables validated"
+
+      rescue:
+        - name: Display validation error
+          debug:
+            msg: "{{ log_prefix }} Validation failed - see error above"
+        - name: Fail playbook
+          fail:
+            msg: "Validation failed - required variables missing"
+
+  tasks:
+    # =========================================================================
+    # Phase 1: Create Host on Dell PowerStore
+    # =========================================================================
+    - name: Create/Register host on Dell PowerStore
+      block:
+        - name: Get list of existing hosts
+          dellemc.powerstore.host_info:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+          register: hosts_info
+          no_log: true
+          failed_when: false
+
+        - name: Check if host already exists
+          set_fact:
+            host_exists: "{{ hosts_info.hosts | selectattr('name', 'equalto', host_name) | list }}"
+          when: not hosts_info.failed
+
+        - name: Display existing host status
+          debug:
+            msg: "{{ log_prefix }} Host {{ host_name }} already registered"
+          when: host_exists | length > 0
+
+        - name: Create host if not exists
+          dellemc.powerstore.host:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            host_name: "{{ host_name }}"
+            host_protocol: "{{ host_protocol }}"
+            initiators:
+              - "{{ host_iqn }}"
+            os_type: "{{ powerstore_host_os_type }}"
+            state: present
+          register: host_creation_result
+          no_log: true
+          when: host_exists | length == 0
+
+        - name: Display host creation result
+          debug:
+            msg: "{{ log_prefix }} Host {{ host_name }} registered successfully"
+          when: host_creation_result is changed
+
+      rescue:
+        - name: Handle host creation failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to register host {{ host_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "Host registration failed - unable to proceed"
+
+    # =========================================================================
+    # Phase 2: Create LUN on Dell PowerStore
+    # =========================================================================
+    - name: Create LUN on Dell PowerStore
+      block:
+        - name: Get list of existing volumes
+          dellemc.powerstore.volume_info:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+          register: volumes_info
+          no_log: true
+          failed_when: false
+
+        - name: Check if LUN already exists
+          set_fact:
+            lun_exists: "{{ volumes_info.volumes | selectattr('name', 'equalto', lun_name) | list }}"
+          when: not volumes_info.failed
+
+        - name: Display existing LUN status
+          debug:
+            msg: "{{ log_prefix }} LUN {{ lun_name }} already exists"
+          when: lun_exists | length > 0
+
+        - name: Create LUN if not exists
+          dellemc.powerstore.volume:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            vol_name: "{{ lun_name }}"
+            size: "{{ lun_size_mb }}"
+            size_unit: "MB"
+            description: "{{ powerstore_volume_defaults.description }}"
+            provisioning: "{{ powerstore_volume_defaults.provisioning_type }}"
+            state: present
+          register: lun_creation_result
+          no_log: true
+          when: lun_exists | length == 0
+
+        - name: Display LUN creation result
+          debug:
+            msg: "{{ log_prefix }} LUN {{ lun_name }} ({{ lun_size_mb }}MB) created successfully"
+          when: lun_creation_result is changed
+
+      rescue:
+        - name: Handle LUN creation failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to create LUN {{ lun_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "LUN creation failed - unable to proceed with mapping"
+
+    # =========================================================================
+    # Phase 3: Map LUN to Host
+    # =========================================================================
+    - name: Map LUN to host
+      block:
+        - name: Get host details
+          dellemc.powerstore.host_info:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            host_name: "{{ host_name }}"
+          register: host_details
+          no_log: true
+
+        - name: Extract host ID
+          set_fact:
+            host_id: "{{ host_details.hosts[0].id }}"
+
+        - name: Get list of volumes mapped to host
+          dellemc.powerstore.volume_info:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+          register: volumes_info
+          no_log: true
+
+        - name: Extract LUN ID
+          set_fact:
+            lun_id: "{{ (volumes_info.volumes | selectattr('name', 'equalto', lun_name) | list)[0].id }}"
+
+        - name: Check if LUN already mapped to host
+          set_fact:
+            lun_mapped: "{{ host_details.hosts[0].volumes | selectattr('id', 'equalto', lun_id) | list }}"
+
+        - name: Display existing LUN mapping
+          debug:
+            msg: "{{ log_prefix }} LUN {{ lun_name }} already mapped to host {{ host_name }}"
+          when: lun_mapped | length > 0
+
+        - name: Map LUN to host if not already mapped
+          dellemc.powerstore.volume_mapping:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            host_id: "{{ host_id }}"
+            volume_id: "{{ lun_id }}"
+            state: present
+          register: lun_mapping_result
+          no_log: true
+          when: lun_mapped | length == 0
+
+        - name: Display LUN mapping result
+          debug:
+            msg: "{{ log_prefix }} LUN {{ lun_name }} mapped to host {{ host_name }} successfully"
+          when: lun_mapping_result is changed
+
+      rescue:
+        - name: Handle LUN mapping failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to map LUN {{ lun_name }} to host {{ host_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "LUN mapping failed"
+
+  post_tasks:
+    - name: Display provisioning completion
+      debug:
+        msg:
+          - "{{ log_prefix }} ✓ Provisioning completed successfully"
+          - "{{ log_prefix }} Host: {{ host_name }}"
+          - "{{ log_prefix }} LUN: {{ lun_name }} ({{ lun_size_mb }}MB)"
+          - "{{ log_prefix }} Status: Ready for use"
+
+    - name: Log provisioning event
+      debug:
+        msg: "{{ log_prefix }} Provisioning event logged"

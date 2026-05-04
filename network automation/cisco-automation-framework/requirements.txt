@@ -1,0 +1,23 @@
+# ============================================================================
+# Requirements File for Cisco Automation Framework
+# ============================================================================
+# Install required packages: pip install -r requirements.txt
+
+# Core Ansible
+ansible>=2.9.0
+
+# Cisco Collections
+cisco.ios>=11.3.0
+cisco.iosxr>=12.2.1
+cisco.fmcansible>=1.0.0
+
+# Supporting Collections
+ansible.netcommon>=3.0.0
+community.general>=4.0.0
+
+# Additional Python packages
+jinja2>=3.0.0
+netaddr>=0.8.0
+napalm>=3.0.0
+pyyaml>=5.4.0
+paramiko>=2.7.0

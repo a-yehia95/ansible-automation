@@ -1,0 +1,18 @@
+---
+# ==============================================================================
+# ETCD Role Handlers
+# ==============================================================================
+
+- name: Restart etcd
+  systemd:
+    name: etcd
+    state: restarted
+    daemon_reload: yes
+  when: inventory_hostname in groups['etcd']
+
+- name: Reload etcd
+  systemd:
+    name: etcd
+    state: reloaded
+    daemon_reload: yes
+  when: inventory_hostname in groups['etcd']

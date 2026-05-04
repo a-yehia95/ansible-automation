@@ -1,0 +1,112 @@
+---
+# ============================================================================
+# Playbook: Day 2 Drift Detection
+# Validates configuration compliance and detects configuration drift
+# ============================================================================
+
+- name: "Configuration Drift Detection"
+  hosts: ios_devices
+  gather_facts: false
+  connection: network_cli
+
+  vars:
+    drift_check_enabled: true
+    backup_dir: "./backups"
+
+  tasks:
+    - name: Gather current running configuration
+      cisco.ios.ios_command:
+        commands:
+          - "show running-config"
+      register: current_config
+      tags:
+        - drift_detection
+
+    - name: Load previous configuration baseline
+      set_fact:
+        baseline_config: "{{ lookup('file', backup_dir + '/' + inventory_hostname + '_baseline.cfg') }}"
+      ignore_errors: true
+      tags:
+        - drift_detection
+
+    - name: Compare configurations for drift
+      block:
+        - name: Check for configuration changes
+          debug:
+            msg: |
+              Comparing current config with baseline for {{ inventory_hostname }}
+          when: baseline_config is defined
+          tags:
+            - drift_detection
+
+        - name: Generate diff report
+          copy:
+            content: |
+              Configuration Drift Report
+              Device: {{ inventory_hostname }}
+              Check Date: {{ ansible_date_time.iso8601 }}
+              
+              Current Configuration:
+              {{ current_config.stdout[0] }}
+            dest: "./backups/drift_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.txt"
+          delegate_to: localhost
+          tags:
+            - drift_detection
+
+    - name: Alert on detected drift
+      debug:
+        msg: "WARNING: Configuration drift detected on {{ inventory_hostname }}"
+      when:
+        - baseline_config is defined
+        - current_config.stdout[0] != baseline_config
+      tags:
+        - drift_detection
+
+    - name: Save current config as new baseline
+      copy:
+        content: "{{ current_config.stdout[0] }}"
+        dest: "./backups/{{ inventory_hostname }}_baseline.cfg"
+      delegate_to: localhost
+      tags:
+        - drift_detection
+
+---
+
+- name: "Configuration Compliance Audit"
+  hosts: ios_devices
+  gather_facts: false
+  connection: network_cli
+
+  tasks:
+    - name: Check mandatory configurations
+      cisco.ios.ios_command:
+        commands:
+          - "show running-config | include hostname"
+          - "show running-config | include ip domain-name"
+          - "show running-config | include ntp"
+          - "show running-config | include aaa"
+      register: compliance_check
+      tags:
+        - compliance
+        - audit
+
+    - name: Validate compliance requirements
+      assert:
+        that:
+          - "'hostname' in compliance_check.stdout[0]"
+          - "'ip domain-name' in compliance_check.stdout[1] or 'domain-name' in compliance_check.stdout[1]"
+          - "'ntp' in compliance_check.stdout[2]"
+          - "'aaa' in compliance_check.stdout[3]"
+        fail_msg: "Compliance requirements not met on {{ inventory_hostname }}"
+      tags:
+        - compliance
+        - audit
+
+    - name: Generate compliance report
+      template:
+        src: compliance_report.j2
+        dest: "./logs/compliance_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.html"
+      delegate_to: localhost
+      tags:
+        - compliance
+        - reporting

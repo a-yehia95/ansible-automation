@@ -1,0 +1,208 @@
+---
+# ==============================================================================
+# VMware Infrastructure Group Variables
+# ==============================================================================
+# All vSphere infrastructure configuration and credentials
+# IMPORTANT: Sensitive data is stored in vault - see group_vars/vmware_infrastructure/vault.yml
+
+# ==============================================================================
+# vCenter Connection Parameters
+# ==============================================================================
+# These reference vault-encrypted values
+vcenter_hostname: "{{ vault_vcenter_hostname }}"
+vcenter_username: "{{ vault_vcenter_username }}"
+vcenter_password: "{{ vault_vcenter_password }}"
+vcenter_port: 443
+vcenter_validate_certs: no  # Use 'no' for self-signed certs; use custom CA bundle for production
+
+# ==============================================================================
+# Datacenter and Cluster Configuration
+# ==============================================================================
+# Default datacenter
+datacenter_name: "Primary-DC"
+
+# Datacenters to manage
+datacenters:
+  - name: "Primary-DC"
+    description: "Primary Production Datacenter"
+  - name: "Secondary-DC"
+    description: "Secondary/DR Datacenter"
+
+# Clusters configuration
+clusters:
+  - name: "Prod-Cluster-1"
+    datacenter: "Primary-DC"
+    enable_drs: true
+    drs_automation_level: "fullyAutomated"
+    enable_ha: true
+    ha_failure_level: 2
+    ha_isolation_response: "powerOff"
+  - name: "Dev-Cluster-1"
+    datacenter: "Primary-DC"
+    enable_drs: true
+    drs_automation_level: "partiallyAutomated"
+    enable_ha: false
+
+# ==============================================================================
+# Network Configuration
+# ==============================================================================
+# Distributed Virtual Switches
+dvs_switches:
+  - name: "DVS-Primary"
+    datacenter: "Primary-DC"
+    description: "Primary DVS for production workloads"
+    mtu: 1500
+    num_uplinks: 2
+    uplink_prefix: "Uplink"
+    discovery_protocol: "lldp"
+    discovery_protocol_operation: "both"
+
+# Port groups
+port_groups:
+  - name: "vMotion"
+    dvs: "DVS-Primary"
+    vlan_id: 100
+    description: "vMotion traffic"
+  - name: "Management"
+    dvs: "DVS-Primary"
+    vlan_id: 10
+    description: "Management traffic"
+  - name: "Production"
+    dvs: "DVS-Primary"
+    vlan_id: 20
+    description: "Production workloads"
+
+# ==============================================================================
+# Storage Configuration
+# ==============================================================================
+# Datastore clusters and local datastores
+datastore_clusters:
+  - name: "Prod-SAN-Cluster"
+    datacenter: "Primary-DC"
+    automation_level: "automated"
+    space_utilization_threshold: 80
+    io_load_balance_enabled: true
+
+# Local datastores (NFS, iSCSI, VMFS)
+datastores:
+  - name: "NAS-ISO-Store"
+    type: "nfs"
+    nfs_server: "nas.example.com"
+    nfs_path: "/iso"
+  - name: "SSD-Datastore-1"
+    type: "vmfs"
+    datacenter: "Primary-DC"
+
+# ==============================================================================
+# VM Folder Structure
+# ==============================================================================
+# VM folder hierarchy for organization
+vm_folders:
+  - name: "Production"
+    parent: "/"
+    datacenter: "Primary-DC"
+    children:
+      - "Applications"
+      - "Databases"
+      - "Load-Balancers"
+  - name: "Development"
+    parent: "/"
+    datacenter: "Primary-DC"
+    children:
+      - "Testing"
+      - "Staging"
+  - name: "Infrastructure"
+    parent: "/"
+    datacenter: "Primary-DC"
+    children:
+      - "Management"
+      - "Monitoring"
+
+# ==============================================================================
+# VM Template Configuration
+# ==============================================================================
+# VM templates for cloning
+vm_templates:
+  - name: "centos-9-base"
+    datacenter: "Primary-DC"
+    os_type: "linux"
+    guest_id: "centos9_64Guest"
+  - name: "ubuntu-22.04-base"
+    datacenter: "Primary-DC"
+    os_type: "linux"
+    guest_id: "ubuntu64Guest"
+  - name: "windows-2022-base"
+    datacenter: "Primary-DC"
+    os_type: "windows"
+    guest_id: "windows2019srvNext_64Guest"
+
+# ==============================================================================
+# VM Provisioning Defaults
+# ==============================================================================
+# Default values for VM provisioning
+vm_provisioning_defaults:
+  cpu_count: 4
+  memory_gb: 8
+  disk_size_gb: 50
+  network:
+    adapter_type: "vmxnet3"
+    dhcp_enabled: true
+  resource_pool: "Resources"
+
+# ==============================================================================
+# Host Configuration
+# ==============================================================================
+# ESXi host settings
+esxi_hosts:
+  - hostname: "esxi1.example.com"
+    datacenter: "Primary-DC"
+    cluster: "Prod-Cluster-1"
+    maintenance_mode_timeout: 600
+  - hostname: "esxi2.example.com"
+    datacenter: "Primary-DC"
+    cluster: "Prod-Cluster-1"
+    maintenance_mode_timeout: 600
+
+# ==============================================================================
+# Snapshot Configuration
+# ==============================================================================
+snapshot_defaults:
+  memory: true
+  quiesce: true
+  retention_days: 7
+  max_snapshots_per_vm: 5
+
+# ==============================================================================
+# vMotion Configuration
+# ==============================================================================
+vmotion:
+  enable_priority: true
+  advanced_cpu_mitigations: true
+  max_concurrent_vmotions: 4
+
+# ==============================================================================
+# Backup and Disaster Recovery
+# ==============================================================================
+backup_config:
+  enabled: true
+  backup_directory: "/backup/vmware"
+  retention_days: 30
+  backup_schedule: "weekly"
+
+# ==============================================================================
+# Reporting and Monitoring
+# ==============================================================================
+reporting:
+  vm_inventory_export: "/reports/vm_inventory.csv"
+  host_status_export: "/reports/host_status.json"
+  snapshot_report: "/reports/snapshot_report.xlsx"
+
+# ==============================================================================
+# Tags for Automation Filtering
+# ==============================================================================
+# Used to selectively run tasks based on tags
+automation_tags:
+  - "day0-foundation"
+  - "day1-provisioning"
+  - "day2-administration"
+  - "reporting"

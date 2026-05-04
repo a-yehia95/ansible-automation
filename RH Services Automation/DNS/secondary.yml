@@ -1,0 +1,39 @@
+- name: secondary servers are deployed
+  hosts: secondary_dns
+  become: true
+
+  tasks:
+    - name: bind is installed
+      ansible.builtin.dnf:
+        name: bind
+        state: present
+
+    - name: named configuration is correct
+      ansible.builtin.copy:
+        src: named-secondary.conf
+        dest: /etc/named.conf
+        owner: root
+        group: named
+        mode: '0640'
+        setype: named_conf_t
+      notify:
+        - restart named
+
+    - name: named is started and enabled
+      ansible.builtin.service:
+        name: named
+        state: started
+        enabled: true
+
+    - name: dns is enabled on the firewall
+      ansible.posix.firewalld:
+        service: dns
+        state: enabled
+        immediate: true
+        permanent: true
+
+  handlers:
+    - name: restart named
+      ansible.builtin.service:
+        name: named
+        state: restarted

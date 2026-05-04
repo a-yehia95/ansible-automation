@@ -1,0 +1,60 @@
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+kubernetesVersion: v{{ kubernetes_version }}
+clusterName: {{ cluster_name }}
+
+# HA Configuration with control plane VIP
+controlPlaneEndpoint: "{{ control_plane_endpoint }}"
+
+# Network Configuration
+networking:
+  dnsDomain: cluster.local
+  podSubnet: "{{ pod_network_cidr }}"
+  serviceSubnet: "{{ service_network_cidr }}"
+
+# API Server Configuration
+apiServer:
+  extraArgs:
+    bind-address: "0.0.0.0"
+    advertise-address: "{{ apiserver_advertise_address }}"
+    enable-admission-plugins: "PodSecurityPolicy,NodeRestriction"
+    default-not-ready-toleration-seconds: "300"
+    default-unreachable-toleration-seconds: "300"
+
+# Kubelet Configuration
+kubelet:
+  baseConfig:
+    cgroupDriver: systemd
+    featureGates:
+      RotateKubeletServerCertificate: true
+
+# Controller Manager Configuration
+controllerManager:
+  extraArgs:
+    bind-address: "0.0.0.0"
+    cloud-provider: ""
+    cluster-signing-duration: "87600h"
+
+# Scheduler Configuration
+scheduler:
+  extraArgs:
+    bind-address: "0.0.0.0"
+
+# etcd Configuration
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+    extraArgs:
+      listen-client-urls: "https://127.0.0.1:2379,https://{{ ansible_host }}:2379"
+      advertise-client-urls: "https://{{ ansible_host }}:2379"
+      listen-peer-urls: "https://{{ ansible_host }}:2380"
+      initial-advertise-peer-urls: "https://{{ ansible_host }}:2380"
+
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: InitConfiguration
+nodeRegistration:
+  criSocket: unix:///run/crio/crio.sock
+  kubeletExtraArgs:
+    cgroup-driver: systemd
+    container-runtime-endpoint: /run/crio/crio.sock

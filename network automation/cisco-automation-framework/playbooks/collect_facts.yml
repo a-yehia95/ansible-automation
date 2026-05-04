@@ -1,0 +1,68 @@
+---
+# ============================================================================
+# Playbook: Device Facts Collection
+# Gathers comprehensive facts from all network devices
+# ============================================================================
+
+- name: "Collect Device Facts and Inventory"
+  hosts: all
+  gather_facts: false
+  connection: network_cli
+
+  tasks:
+    - name: Gather facts from IOS devices
+      cisco.ios.ios_facts:
+        gather_subset: all
+      register: ios_facts
+      when: ansible_network_os == 'ios'
+      tags:
+        - facts
+        - inventory
+
+    - name: Gather facts from IOS-XE devices
+      cisco.iosxe.iosxe_facts:
+        gather_subset: all
+      register: iosxe_facts
+      when: ansible_network_os == 'iosxe'
+      tags:
+        - facts
+        - inventory
+
+    - name: Save facts to JSON file
+      copy:
+        content: "{{ hostvars[inventory_hostname] | to_nice_json }}"
+        dest: "./facts/{{ inventory_hostname }}_facts.json"
+      delegate_to: localhost
+      tags:
+        - facts
+        - export
+
+    - name: Display device summary
+      debug:
+        msg: |
+          Device: {{ inventory_hostname }}
+          Hostname: {{ ansible_net_hostname }}
+          Model: {{ ansible_net_model }}
+          Version: {{ ansible_net_version }}
+          Serial: {{ ansible_net_serialnum }}
+          Uptime: {{ ansible_net_uptime_seconds | human_readable(unit='seconds') }}
+          Interfaces: {{ ansible_net_interfaces.keys() | list | join(', ') }}
+      tags:
+        - facts
+        - display
+
+---
+
+# Create dynamic inventory from facts
+- name: "Generate Inventory Report"
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Create inventory summary
+      template:
+        src: inventory_report.j2
+        dest: "./reports/inventory_{{ ansible_date_time.iso8601 }}.html"
+      tags:
+        - facts
+        - reporting

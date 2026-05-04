@@ -1,0 +1,18 @@
+---
+# ==============================================================================
+# Role: network_config - Defaults
+# ==============================================================================
+
+# vDS Configuration
+vds_version: "7.0.0"
+vds_mtu: 1500
+vds_state: "present"
+
+# Port Group Defaults
+portgroup_vlan_mode: "access"
+portgroup_num_ports: 128
+portgroup_type: "earlyBinding"
+
+# Virtual Machine Port Group Binding
+vm_portgroup_type: "earlyBinding"
+vm_network_vlan_tagging: "vlan"

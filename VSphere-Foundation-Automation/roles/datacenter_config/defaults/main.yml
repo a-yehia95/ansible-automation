@@ -1,0 +1,8 @@
+---
+# ==============================================================================
+# Role: datacenter_config - Defaults
+# ==============================================================================
+
+datacenter_state: "present"
+datacenter_create_folders: false
+datacenter_description: "Managed by Ansible VMware REST Collection"

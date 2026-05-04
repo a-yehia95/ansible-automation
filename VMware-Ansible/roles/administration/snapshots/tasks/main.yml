@@ -1,0 +1,195 @@
+---
+# ==============================================================================
+# Snapshots Role - Tasks
+# ==============================================================================
+# Manages VM snapshots: create, remove, revert
+
+- name: Display snapshot management information
+  debug:
+    msg:
+      - "=========================================="
+      - "VM Snapshot Management"
+      - "=========================================="
+      - "VM Name: {{ vm_name }}"
+      - "Datacenter: {{ datacenter_name }}"
+      - "Operation: {{ snapshot_state }}"
+      - "=========================================="
+  tags:
+    - day2
+    - administration
+    - snapshots
+    - always
+
+# ==============================================================================
+# Create Snapshot
+# ==============================================================================
+
+- name: Create snapshot
+  vmware_guest_snapshot:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    state: present
+    snapshot_name: "{{ snapshot_name | default(vm_name + '-' + ansible_date_time.iso8601_basic_short) }}"
+    description: "{{ snapshot_description | default('Automated snapshot') }}"
+    memory_dump: "{{ snapshot_memory }}"
+    quiesce: "{{ snapshot_quiesce }}"
+  delegate_to: localhost
+  when: snapshot_state == "present"
+  tags:
+    - day2
+    - administration
+    - snapshots
+    - create
+
+# ==============================================================================
+# List Snapshots
+# ==============================================================================
+
+- name: List all snapshots for VM
+  vmware_guest_snapshot_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+  delegate_to: localhost
+  register: snapshot_info
+  tags:
+    - day2
+    - administration
+    - snapshots
+    - list
+
+- name: Display snapshot information
+  debug:
+    msg:
+      - "Snapshots for {{ vm_name }}:"
+      - "{{ snapshot_info.guest_snapshots | to_nice_json }}"
+  when: snapshot_info.guest_snapshots is defined
+  tags:
+    - day2
+    - administration
+    - snapshots
+    - list
+    - always
+
+# ==============================================================================
+# Revert to Snapshot
+# ==============================================================================
+
+- name: Revert to snapshot
+  vmware_guest_snapshot:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    state: revert
+    snapshot_name: "{{ snapshot_name }}"
+  delegate_to: localhost
+  when:
+    - snapshot_state == "revert"
+    - snapshot_name is defined
+  tags:
+    - day2
+    - administration
+    - snapshots
+    - revert
+
+# ==============================================================================
+# Remove Snapshot
+# ==============================================================================
+
+- name: Remove snapshot
+  vmware_guest_snapshot:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    state: absent
+    snapshot_name: "{{ snapshot_name }}"
+  delegate_to: localhost
+  when:
+    - snapshot_state == "absent"
+    - snapshot_name is defined
+  tags:
+    - day2
+    - administration
+    - snapshots
+    - remove
+
+# ==============================================================================
+# Remove All Snapshots
+# ==============================================================================
+
+- name: Remove all snapshots
+  vmware_guest_snapshot:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    state: absent
+    remove_children: true
+  delegate_to: localhost
+  when:
+    - snapshot_state == "absent"
+    - snapshot_name is not defined
+    - remove_all_snapshots | default(false)
+  tags:
+    - day2
+    - administration
+    - snapshots
+    - remove-all
+
+# ==============================================================================
+# Cleanup Old Snapshots (Retention Policy)
+# ==============================================================================
+
+- name: Cleanup snapshots older than retention period
+  vmware_guest_snapshot:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    state: absent
+    snapshot_name: "{{ item }}"
+  loop: "{{ snapshot_info.guest_snapshots | selectattr('description', 'search', 'older-than-' + (snapshot_retention_days | string)) | map(attribute='name') | list }}"
+  delegate_to: localhost
+  when:
+    - snapshot_retention_days is defined
+    - snapshot_info.guest_snapshots is defined
+  tags:
+    - day2
+    - administration
+    - snapshots
+    - cleanup
+
+- name: Display snapshot cleanup results
+  debug:
+    msg:
+      - "Snapshot Operation Complete:"
+      - "VM: {{ vm_name }}"
+      - "Total Snapshots: {{ snapshot_info.guest_snapshots | length | default(0) }}"
+  tags:
+    - day2
+    - administration
+    - snapshots
+    - always

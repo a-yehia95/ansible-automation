@@ -1,0 +1,13 @@
+.vault_pass
+*.pem
+*.key
+*.vault
+.vault_pass*
+facts/
+logs/
+*.retry
+__pycache__/
+.DS_Store
+credentials/
+secrets/
+.env

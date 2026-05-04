@@ -1,0 +1,25 @@
+---
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  variant: Calico
+  imagePullSecrets:
+    - name: tigera-pull-secret
+  calicoNetwork:
+    bgp: Enabled
+    ipPools:
+      - name: default-ipv4-ippool
+        blockSize: 26
+        cidr: {{ pod_network_cidr }}
+        encapsulation: VXLANCrossSubnet
+        natOutgoing: Enabled
+        nodeSelector: all()
+  calicoNodeDaemonSet:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/os: linux
+  flexVolumePath: /etc/kubernetes/kubelet-plugins/volume/exec

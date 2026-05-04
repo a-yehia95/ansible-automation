@@ -1,0 +1,93 @@
+---
+# ==============================================================================
+# CRI-O Role - Main Task File
+# ==============================================================================
+# Purpose: Install and configure CRI-O container runtime for Kubernetes
+# ==============================================================================
+
+- name: Add CRI-O repository
+  block:
+    - name: Add repository source for CRI-O
+      shell: |
+        curl -L -o /etc/yum.repos.d/cri-o.repo \
+          https://pkgs.k8s.io/addons:/cri-o:/stable:/v{{ crio_version }}/rpm/cri-o.repo
+      register: repo_add
+      changed_when: repo_add.changed
+      failed_when: false
+
+    - name: Alternatively Add CRI-O repository via DNF (fallback)
+      dnf:
+        name: cri-o
+        state: present
+      register: crio_install_fallback
+      changed_when: crio_install_fallback.changed
+
+- name: Install CRI-O package
+  dnf:
+    name:
+      - cri-o
+    state: present
+  register: crio_install
+  changed_when: crio_install.changed
+
+- name: Enable and start CRI-O service
+  service:
+    name: crio
+    enabled: yes
+    state: started
+  register: crio_service
+  changed_when: crio_service.changed
+
+- name: Verify CRI-O installation
+  block:
+    - name: Check CRI-O socket exists
+      stat:
+        path: /run/crio/crio.sock
+      register: crio_socket
+      changed_when: false
+
+    - name: Get CRI-O version
+      command: crio --version
+      register: crio_version_check
+      changed_when: false
+      failed_when: false
+
+    - name: Display CRI-O status
+      debug:
+        msg:
+          - "✓ CRI-O Container Runtime Installed"
+          - "  Socket: {{ crio_socket.stat.path }}"
+          - "  Status: {{ 'Active' if crio_socket.stat.exists else 'Not Found' }}"
+          - "  Version: {{ crio_version_check.stdout | default('Unknown') }}"
+
+- name: Configure CRI-O settings
+  block:
+    - name: Create CRI-O config directory
+      file:
+        path: /etc/crio/crio.conf.d
+        state: directory
+        mode: "0755"
+
+    - name: Configure CRI-O log level
+      lineinfile:
+        path: /etc/crio/crio.conf
+        regexp: "^# log_level"
+        line: "log_level = \"info\""
+        state: present
+      notify: Restart crio
+      changed_when: true
+
+    - name: Enable CRI-O to use systemd cgroups
+      lineinfile:
+        path: /etc/crio/crio.conf
+        regexp: "^# cgroup_manager"
+        line: "cgroup_manager = \"systemd\""
+        state: present
+      notify: Restart crio
+      changed_when: true
+
+- name: Create kubelet service directory
+  file:
+    path: /etc/systemd/system/kubelet.service.d
+    state: directory
+    mode: "0755"

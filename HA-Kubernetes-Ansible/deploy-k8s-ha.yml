@@ -1,0 +1,446 @@
+---
+# ==============================================================================
+# Main Kubernetes HA Cluster Deployment Playbook
+# ==============================================================================
+# This playbook orchestrates the deployment of a highly available Kubernetes
+# cluster across multiple nodes. It handles all setup phases in the correct order.
+#
+# Cluster Architecture:
+#   - 3-5 etcd nodes (distributed consensus store)
+#   - 3+ master nodes (control plane with API server, scheduler, controller manager)
+#   - 2+ load balancer nodes (HA with virtual IP)
+#   - 1+ worker nodes (compute nodes)
+#
+# Deployment Order:
+#   1. Common setup on all nodes
+#   2. ETCD cluster setup
+#   3. Load balancer setup
+#   4. Master nodes initialization
+#   5. Worker nodes join cluster
+
+# ==============================================================================
+# Playbook Configuration
+# ==============================================================================
+
+name: "Kubernetes HA Cluster Deployment"
+hosts: all_nodes
+become: yes
+gather_facts: yes
+
+vars_files:
+  - group_vars/all.yml
+
+# ==============================================================================
+# Pre-deployment Checks
+# ==============================================================================
+
+pre_tasks:
+  - name: Display deployment information
+    debug:
+      msg:
+        - "=========================================="
+        - "Kubernetes HA Cluster Deployment"
+        - "=========================================="
+        - "Cluster Name: {{ cluster_name }}"
+        - "Kubernetes Version: {{ kubernetes_version }}"
+        - "ETCD Nodes: {{ groups['etcd'] | length }}"
+        - "Master Nodes: {{ groups['master'] | length }}"
+        - "Worker Nodes: {{ groups['worker'] | length }}"
+        - "Load Balancers: {{ groups['loadbalancer'] | length }}"
+        - "Load Balancer VIP: {{ loadbalancer_vip }}"
+        - "Pod CIDR: {{ pod_network_cidr }}"
+        - "Service CIDR: {{ service_network_cidr }}"
+        - "=========================================="
+    tags:
+      - always
+      - info
+
+  - name: Verify minimum cluster configuration
+    assert:
+      that:
+        - groups['etcd'] | length >= 3
+        - groups['etcd'] | length % 2 == 1
+        - groups['master'] | length >= 3
+        - groups['master'] | length % 2 == 1
+        - groups['worker'] | length >= 1
+        - groups['loadbalancer'] | length >= 2
+      fail_msg: |
+        Invalid cluster configuration. Requirements:
+        - ETCD nodes: odd number (3, 5, 7...), got {{ groups['etcd'] | length }}
+        - Master nodes: odd number (3, 5, 7...), got {{ groups['master'] | length }}
+        - Worker nodes: at least 1, got {{ groups['worker'] | length }}
+        - Load balancer nodes: at least 2, got {{ groups['loadbalancer'] | length }}
+    run_once: true
+    tags:
+      - verify
+      - always
+
+  - name: Check network connectivity between nodes
+    shell: ping -c 1 {{ item }}
+    loop: "{{ groups['all_nodes'] }}"
+    retries: 3
+    delay: 5
+    tags:
+      - verify
+      - connectivity
+
+# ==============================================================================
+# Phase 1: Common Setup on All Nodes
+# ==============================================================================
+
+- name: "Phase 1: Common System Setup"
+  hosts: all_nodes
+  become: yes
+  roles:
+    - role: common
+      tags:
+        - phase-1
+        - common
+        - always
+  tasks:
+    - name: Display Phase 1 completion
+      debug:
+        msg:
+          - "=========================================="
+          - "✓ Phase 1 Complete: Common Setup"
+          - "=========================================="
+          - "All nodes are ready for Kubernetes"
+          - "System packages installed"
+          - "Container runtime configured"
+          - "CNI plugins installed"
+          - "=========================================="
+      tags:
+        - always
+        - phase-1
+
+# ==============================================================================
+# Phase 2: ETCD Cluster Setup
+# ==============================================================================
+
+- name: "Phase 2: ETCD Cluster Setup"
+  hosts: etcd
+  serial: 1  # One node at a time for safe cluster initialization
+  become: yes
+  roles:
+    - role: etcd
+      tags:
+        - phase-2
+        - etcd
+  tasks:
+    - name: Display Phase 2 progress
+      debug:
+        msg:
+          - "=========================================="
+          - "✓ {{ inventory_hostname }} joined ETCD cluster"
+          - "=========================================="
+      tags:
+        - always
+        - phase-2
+
+  post_tasks:
+    - name: ETCD Cluster Setup Complete
+      debug:
+        msg:
+          - "=========================================="
+          - "✓ Phase 2 Complete: ETCD Cluster"
+          - "=========================================="
+          - "ETCD cluster established"
+          - "{{ groups['etcd'] | length }} nodes in cluster"
+          - "Certificates generated"
+          - "Backups configured"
+          - "=========================================="
+      run_once: yes
+      tags:
+        - always
+        - phase-2
+
+# ==============================================================================
+# Phase 3: Load Balancer Setup (for HA Control Plane)
+# ==============================================================================
+
+- name: "Phase 3: Load Balancer Setup"
+  hosts: loadbalancer
+  become: yes
+  roles:
+    - role: loadbalancer
+      tags:
+        - phase-3
+        - loadbalancer
+  tasks:
+    - name: Verify load balancer is ready
+      wait_for:
+        port: 6443
+        timeout: 30
+      tags:
+        - verify
+
+    - name: Display Phase 3 completion
+      debug:
+        msg:
+          - "=========================================="
+          - "✓ Phase 3 Complete: Load Balancer Setup"
+          - "=========================================="
+          - "HAProxy configured"
+          - "Keepalived for HA enabled"
+          - "Virtual IP: {{ loadbalancer_vip }}"
+          - "Load balancing API server traffic"
+          - "=========================================="
+      run_once: yes
+      tags:
+        - always
+        - phase-3
+
+# ==============================================================================
+# Phase 4: Kubernetes Master (Control Plane) Setup
+# ==============================================================================
+
+- name: "Phase 4: Kubernetes Master Setup"
+  hosts: master
+  serial: 1  # One at a time to properly bootstrap the cluster
+  become: yes
+  roles:
+    - role: master
+      tags:
+        - phase-4
+        - master
+  tasks:
+    - name: Display master node progress
+      debug:
+        msg:
+          - "✓ {{ inventory_hostname }} joined Kubernetes cluster"
+      tags:
+        - always
+
+  post_tasks:
+    - name: Master Nodes Setup Complete
+      debug:
+        msg:
+          - "=========================================="
+          - "✓ Phase 4 Complete: Master Nodes Setup"
+          - "=========================================="
+          - "{{ groups['master'] | length }} master nodes configured"
+          - "Kubernetes control plane initialized"
+          - "API server running on all masters"
+          - "Load balanced via {{ loadbalancer_vip }}:6443"
+          - "Flannel CNI deployed"
+          - "Core DNS running"
+          - "=========================================="
+      run_once: yes
+      when: inventory_hostname == groups['master'][0]
+      tags:
+        - always
+        - phase-4
+
+# ==============================================================================
+# Phase 5: Kubernetes Worker Nodes Setup
+# ==============================================================================
+
+- name: "Phase 5: Kubernetes Worker Nodes Setup"
+  hosts: worker
+  become: yes
+  roles:
+    - role: worker
+      tags:
+        - phase-5
+        - worker
+  tasks:
+    - name: Display worker node progress
+      debug:
+        msg:
+          - "✓ {{ inventory_hostname }} joined Kubernetes cluster as worker"
+      tags:
+        - always
+
+  post_tasks:
+    - name: Worker Nodes Setup Complete
+      debug:
+        msg:
+          - "=========================================="
+          - "✓ Phase 5 Complete: Worker Nodes Setup"
+          - "=========================================="
+          - "{{ groups['worker'] | length }} worker nodes joined cluster"
+          - "All workers are ready for workloads"
+          - "Kubelet running on all workers"
+          - "=========================================="
+      run_once: yes
+      when: inventory_hostname == groups['master'][0]
+      tags:
+        - always
+        - phase-5
+
+# ==============================================================================
+# Final Verification and Summary
+# ==============================================================================
+
+- name: "Final Cluster Verification"
+  hosts: "{{ groups['master'][0] }}"
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Get cluster nodes
+      shell: |
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+          get nodes -o wide
+      register: cluster_nodes
+      tags:
+        - verify
+        - final
+
+    - name: Get cluster components status
+      shell: |
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+          get componentstatuses
+      register: component_status
+      tags:
+        - verify
+        - final
+
+    - name: Get cluster version
+      shell: |
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+          version --short
+      register: cluster_version
+      tags:
+        - verify
+        - final
+
+    - name: Get all pods
+      shell: |
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+          get pods -A -o wide
+      register: all_pods
+      tags:
+        - verify
+        - final
+
+    - name: Display Deployment Summary
+      debug:
+        msg:
+          - ""
+          - "=================================================="
+          - "✓✓✓ KUBERNETES HA CLUSTER DEPLOYMENT COMPLETE ✓✓✓"
+          - "=================================================="
+          - ""
+          - "CLUSTER INFORMATION"
+          - "=================================================="
+          - "Cluster Name: {{ cluster_name }}"
+          - "Kubernetes Version: {{ cluster_version.stdout_lines[0] }}"
+          - "API Endpoint: https://{{ loadbalancer_vip }}:6443"
+          - ""
+          - "CLUSTER NODES"
+          - "=================================================="
+          - "{{ cluster_nodes.stdout }}"
+          - ""
+          - "CLUSTER COMPONENTS STATUS"
+          - "=================================================="
+          - "{{ component_status.stdout }}"
+          - ""
+          - "CLUSTER PODS"
+          - "=================================================="
+          - "{{ all_pods.stdout }}"
+          - ""
+          - "NEXT STEPS"
+          - "=================================================="
+          - "1. Copy kubeconfig to your local machine:"
+          - "   scp root@{{ groups['master'][0] }}:/etc/kubernetes/admin.conf ~/.kube/config"
+          - ""
+          - "2. Update kubeconfig API endpoint:"
+          - "   kubectl config set-cluster kubernetes --server=https://{{ loadbalancer_vip }}:6443"
+          - ""
+          - "3. Verify cluster access:"
+          - "   kubectl get nodes"
+          - ""
+          - "4. Deploy your applications:"
+          - "   kubectl apply -f your-app.yaml"
+          - ""
+          - "DOCUMENTATION"
+          - "=================================================="
+          - "API Documentation: https://kubernetes.io/docs/"
+          - "Kubectl Reference: https://kubernetes.io/docs/reference/"
+          - "Troubleshooting: https://kubernetes.io/docs/tasks/debug/"
+          - ""
+          - "=================================================="
+      tags:
+        - always
+        - final
+
+# ==============================================================================
+# Post-Deployment Tasks
+# ==============================================================================
+
+post_tasks:
+  - name: Save kubeconfig to ansible controller
+    fetch:
+      src: /etc/kubernetes/admin.conf
+      dest: ./admin.conf
+      flat: yes
+    when: inventory_hostname == groups['master'][0]
+    tags:
+      - post-deploy
+
+  - name: Create deployment summary file
+    copy:
+      content: |
+        # Kubernetes HA Cluster Deployment Summary
+        
+        ## Deployment Completed: {{ ansible_date_time.iso8601 }}
+        
+        ### Cluster Configuration
+        - Cluster Name: {{ cluster_name }}
+        - Kubernetes Version: {{ kubernetes_version }}
+        - Pod CIDR: {{ pod_network_cidr }}
+        - Service CIDR: {{ service_network_cidr }}
+        - API VIP: {{ loadbalancer_vip }}:6443
+        
+        ### Node Configuration
+        - ETCD Nodes: {{ groups['etcd'] | join(', ') }}
+        - Master Nodes: {{ groups['master'] | join(', ') }}
+        - Worker Nodes: {{ groups['worker'] | join(', ') }}
+        - Load Balancers: {{ groups['loadbalancer'] | join(', ') }}
+        
+        ### Important Files
+        - Admin Kubeconfig: /etc/kubernetes/admin.conf (on masters)
+        - ETCD Certificates: /etc/kubernetes/pki/etcd/
+        - Kubernetes Certificates: /etc/kubernetes/pki/
+        - Backup Location: {{ etcd_backup_path }}
+        
+        ### Connect to Cluster
+        ```bash
+        kubectl config set-cluster kubernetes --server=https://{{ loadbalancer_vip }}:6443
+        kubectl get nodes
+        ```
+        
+        ### Maintenance
+        - ETCD backups run every 6 hours
+        - Monitor API server at: https://{{ loadbalancer_vip }}:8404/stats (HAProxy stats)
+        - Check logs: journalctl -u kubelet (on each node)
+      dest: ./DEPLOYMENT_SUMMARY.md
+    delegate_to: localhost
+    become: no
+    tags:
+      - post-deploy
+
+  - name: Display cluster access instructions
+    debug:
+      msg:
+        - ""
+        - "=========================================="
+        - "CLUSTER ACCESS INSTRUCTIONS"
+        - "=========================================="
+        - ""
+        - "1. Admin Kubeconfig saved to: ./admin.conf"
+        - ""
+        - "2. To access the cluster remotely:"
+        - "   export KUBECONFIG=./admin.conf"
+        - "   kubectl get nodes"
+        - ""
+        - "3. API Server VIP: {{ loadbalancer_vip }}:6443"
+        - ""
+        - "4. View cluster status:"
+        - "   kubectl cluster-info"
+        - "   kubectl get componentstatuses"
+        - ""
+        - "=========================================="
+    tags:
+      - always
+      - final

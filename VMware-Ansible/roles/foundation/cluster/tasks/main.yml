@@ -1,0 +1,98 @@
+---
+# ==============================================================================
+# Cluster Role - Tasks
+# ==============================================================================
+# Creates and manages VMware clusters with DRS, HA, and affinity rules
+
+- name: Display cluster management information
+  debug:
+    msg:
+      - "=========================================="
+      - "Cluster Management"
+      - "=========================================="
+      - "vCenter: {{ vcenter_hostname }}"
+      - "State: {{ cluster_state }}"
+      - "Clusters: {{ clusters | length }}"
+      - "=========================================="
+  tags:
+    - day0
+    - cluster
+    - always
+
+# ==============================================================================
+# Create Clusters
+# ==============================================================================
+
+- name: Create clusters with DRS and HA
+  vmware_cluster:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    datacenter_name: "{{ item.datacenter }}"
+    cluster_name: "{{ item.name }}"
+    enable_drs: "{{ item.enable_drs | default(enable_drs_default) }}"
+    drs_automation_level: "{{ item.drs_automation_level | default('fullyAutomated') }}"
+    enable_ha: "{{ item.enable_ha | default(enable_ha_default) }}"
+    ha_vm_monitoring: "{{ ha_vm_monitoring }}"
+    ha_failover_level: "{{ item.ha_failure_level | default(2) }}"
+    ha_isolation_response: "{{ item.ha_isolation_response | default('powerOff') }}"
+    state: "{{ cluster_state }}"
+  loop: "{{ clusters }}"
+  delegate_to: localhost
+  tags:
+    - day0
+    - cluster
+    - create
+
+# ==============================================================================
+# Gather Cluster Facts
+# ==============================================================================
+
+- name: Gather cluster information
+  vmware_cluster_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    datacenter: "{{ item.datacenter }}"
+    cluster_name: "{{ item.name }}"
+  loop: "{{ clusters }}"
+  delegate_to: localhost
+  register: cluster_info
+  tags:
+    - day0
+    - cluster
+    - info
+
+- name: Display cluster information
+  debug:
+    msg:
+      - "Cluster: {{ item.item.name }}"
+      - "DRS Enabled: {{ item.clusters[item.item.name]['drs_enabled'] | default('N/A') }}"
+      - "HA Enabled: {{ item.clusters[item.item.name]['ha_enabled'] | default('N/A') }}"
+  loop: "{{ cluster_info.results }}"
+  tags:
+    - day0
+    - cluster
+    - info
+    - always
+
+# ==============================================================================
+# Verify Cluster Creation
+# ==============================================================================
+
+- name: Verify cluster creation
+  assert:
+    that:
+      - item.clusters is defined
+      - item.item.name in item.clusters
+    fail_msg: "Cluster {{ item.item.name }} not found"
+    success_msg: "Cluster {{ item.item.name }} successfully created/verified"
+  loop: "{{ cluster_info.results }}"
+  tags:
+    - day0
+    - cluster
+    - verify

@@ -1,0 +1,126 @@
+---
+# ==============================================================================
+# Role: vm_lifecycle
+# Description: Manage VM lifecycle operations (create, update, delete, power)
+# ==============================================================================
+
+- name: Manage Virtual Machine Lifecycle
+  block:
+    - name: Query virtual machines
+      vmware.rest.vcenter_vm_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        filter_names: "{{ vm_names | default([]) }}"
+      register: vm_info
+      tags:
+        - vm_query
+
+    - name: Display VM information
+      debug:
+        msg: |
+          Virtual Machines:
+          {% for vm in vm_info.value | default([]) %}
+          - Name: {{ vm.name }}
+            ID: {{ vm.vm }}
+            Power State: {{ vm.power_state | default('N/A') }}
+            CPU: {{ vm.cpu_count | default('N/A') }} cores
+            Memory: {{ vm.memory_size_MiB | default('N/A') }} MiB
+          {% endfor %}
+        verbosity: 1
+      tags:
+        - vm_query
+        - debug
+
+    - name: Manage VM power state
+      vmware.rest.vcenter_vm_power:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ vm.name }}"
+        state: "{{ vm.power_state | default('present') }}"
+      register: vm_power_result
+      loop: "{{ day2_config.virtual_machines | default([]) }}"
+      loop_control:
+        loop_var: vm
+      when: day2_config.virtual_machines is defined and vm.power_state is defined
+      tags:
+        - vm_power
+
+    - name: Update VM hardware
+      vmware.rest.vcenter_vm_hardware_update:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ vm.name }}"
+        cpu_count: "{{ vm.cpu | default(omit) }}"
+        memory_size_MiB: "{{ vm.memory_mb | default(omit) }}"
+      register: vm_hardware_result
+      loop: "{{ day2_config.virtual_machines | default([]) }}"
+      loop_control:
+        loop_var: vm
+      when: day2_config.virtual_machines is defined and (vm.cpu is defined or vm.memory_mb is defined)
+      tags:
+        - vm_hardware_update
+
+    - name: Add tags to VMs
+      vmware.rest.vcenter_tagging_tag:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        name: "{{ tag.name }}"
+        category_id: "{{ tag.category_id }}"
+        object_id: "{{ vm.name }}"
+        object_type: "VirtualMachine"
+        state: present
+      register: vm_tag_result
+      loop: "{{ day2_config.tags | default([]) }}"
+      loop_control:
+        loop_var: tag
+      tags:
+        - vm_tags
+
+    - name: Delete virtual machines
+      vmware.rest.vcenter_vm_delete:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ vm.name }}"
+      register: vm_delete_result
+      loop: "{{ day2_config.vms_to_delete | default([]) }}"
+      loop_control:
+        loop_var: vm
+      when: day2_config.vms_to_delete is defined
+      tags:
+        - vm_delete
+
+    - name: Display VM lifecycle operation results
+      debug:
+        msg: |
+          VM Lifecycle Operations:
+          Power State Changes: {{ vm_power_result.results | default([]) | length }}
+          Hardware Updates: {{ vm_hardware_result.results | default([]) | length }}
+          Tags Added: {{ vm_tag_result.results | default([]) | length }}
+          VMs Deleted: {{ vm_delete_result.results | default([]) | length }}
+        verbosity: 0
+      tags:
+        - vm_lifecycle_summary
+
+  rescue:
+    - name: Handle VM lifecycle error
+      debug:
+        msg: |
+          Error managing VM lifecycle:
+          {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags:
+        - error_handling
+
+  tags:
+    - vm_lifecycle
+    - day2
+    - administration

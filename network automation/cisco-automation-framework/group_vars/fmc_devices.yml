@@ -1,0 +1,41 @@
+---
+# ============================================================================
+# FMC Managed Devices (Firepower Threat Defense) Variables
+# ============================================================================
+
+ansible_connection: network_cli
+ansible_network_os: iosxe
+ansible_user: "{{ ftd_user }}"  # Use Vault
+ansible_password: "{{ ftd_password }}"  # Use Vault
+
+# FMC Management
+fmc_enabled: true
+fmc_user: "{{ fmc_admin_user }}"  # Use Vault
+fmc_password: "{{ fmc_admin_password }}"  # Use Vault
+fmc_validate_certs: true
+
+# Firepower Defaults
+firepower_config:
+  threat_defense_enabled: true
+  url_filtering_enabled: true
+  file_inspection_enabled: true
+  ssl_inspection_enabled: false  # Enable with caution
+
+# Security Intelligence
+security_intelligence:
+  dynamic_db_enabled: true
+  update_interval: 3600
+  threat_level_threshold: medium
+
+# Access Control Policy defaults
+default_acp:
+  name: "Default_ACP"
+  action: block
+  log_enabled: true
+  log_level: informational
+
+# NAT Configuration
+nat_policy:
+  inside_interface: GigabitEthernet0/0
+  outside_interface: GigabitEthernet0/1
+  auto_nat_enabled: true

@@ -1,0 +1,21 @@
+# ==============================================================================
+# PAM Password Quality Configuration Template
+# ==============================================================================
+# Configures password quality requirements for RHEL 9
+
+# Password quality requirements
+minlen = {{ cis_authentication.pam_config.password_min_class + 12 }}
+dcredit = -1
+ucredit = -1
+ocredit = -1
+lcredit = -1
+difok = 3
+maxrepeat = 3
+usercheck = 1
+enforce_for_root
+retry = 3
+
+# Additional complexity requirements
+gecoscheck = 0
+dictcheck = 1
+usersubstitution = 1

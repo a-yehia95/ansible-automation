@@ -1,0 +1,63 @@
+# ==============================================================================
+# Rsyslog Configuration Template
+# ==============================================================================
+# Central logging configuration for RHEL 9 CIS hardening
+
+# Work directory
+$WorkDirectory /var/lib/rsyslog
+
+# Default permissions for all log files
+$FileOwner root
+$FileGroup adm
+$FileCreateMode 0640
+$DirCreateMode 0755
+$Umask 0022
+$PrivDropToUser syslog
+$PrivDropToGroup adm
+
+# ============================================================
+# Log rules for CIS compliance
+# ============================================================
+
+# Authentication
+auth,authpriv.*                 /var/log/auth.log
+*.*                             /var/log/secure
+
+# System messages
+kern.*                          /var/log/kern.log
+mail.*                          -/var/log/mail.log
+mail.err                        /var/log/mail.err
+
+# Cron
+cron.*                          /var/log/cron
+
+# User processes
+user.*                          /var/log/user.log
+
+# News subsystem
+uucp,news.crit                  /var/log/news/news.crit
+uucp,news.notice                -/var/log/news/news.notice
+
+# All remaining messages
+*.=debug;\
+        auth,authpriv.none;\
+        news.none;\
+        mail.none;\
+        -/var/log/debug
+*.=info;*.=notice;\
+        auth,authpriv.none;\
+        cron,mail.none;\
+        -/var/log/messages
+
+# Log anything (except mail) of level info or higher
+# don't log private authentication messages
+*.info;mail.none;cron.none      -/var/log/messages
+
+# The named pipe /dev/xconsole is for the `xconsole' utility
+daemon.*                        -/dev/xconsole
+
+# Emergencies are sent to everybody logged in
+*.emerg                         :omusrmsg:*
+
+# Save boot messages also to boot.log
+local7.*                        -/var/log/boot.log

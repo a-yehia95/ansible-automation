@@ -1,0 +1,19 @@
+---
+# ==============================================================================
+# Requirements - RHEL 9 CIS Hardening
+# ==============================================================================
+# Python and system requirements for RHEL 9 CIS hardening
+
+# Ansible Modules Required (built-in)
+# - ansible.posix.sysctl
+# - ansible.posix.firewalld
+# - community.general.modprobe
+# - community.general.sysctl
+
+# Python Packages
+PyYAML>=5.4.1
+jinja2>=2.11.0
+
+# For testing and validation
+pytest
+pytest-testinfra

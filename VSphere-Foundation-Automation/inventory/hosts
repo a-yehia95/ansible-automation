@@ -1,0 +1,34 @@
+# ==============================================================================
+# Ansible Inventory for VMware vSphere Foundation Automation
+# ==============================================================================
+# Usage: ansible-playbook -i inventory/hosts playbooks/main.yml
+
+[vcenter_servers]
+vcenter01 ansible_host=vcenter.example.com ansible_user=administrator@vsphere.local
+
+[vcenter_servers:vars]
+# vCenter connection settings are in group_vars/vcenter_servers/
+ansible_connection=local
+ansible_python_interpreter=python3
+
+# Day 0 Operations
+[day0_operations]
+vcenter01
+
+# Day 1 Operations (VM Provisioning)
+[day1_operations]
+vcenter01
+
+# Day 2 Operations (Administration)
+[day2_operations]
+vcenter01
+
+# Environment groups
+[production]
+vcenter01
+
+[staging]
+# staging-vcenter ansible_host=vcenter-stage.example.com
+
+[development]
+# dev-vcenter ansible_host=vcenter-dev.example.com

@@ -1,0 +1,22 @@
+---
+# ==============================================================================
+# Role: vcenter_init - Defaults
+# ==============================================================================
+
+# vCenter Connection Defaults
+vcenter_hostname: "vcenter.example.com"
+vcenter_port: 443
+vcenter_username: "administrator@vsphere.local"
+vcenter_validate_certs: false
+vcenter_insecure_ssl: true
+
+# Environment
+environment_name: "production"
+
+# API Connection Timeouts
+vcenter_api_timeout: 300
+vcenter_connect_timeout: 60
+
+# Logging
+enable_logging: true
+log_level: "INFO"

@@ -1,0 +1,33 @@
+# ==============================================================================
+# Inventory - RHEL 9 Servers for CIS Hardening
+# ==============================================================================
+# Usage: ansible-playbook -i inventory/hosts playbooks/master.yml
+
+[rhel9_servers]
+rhel9-server-01 ansible_host=192.168.1.100 cis_profile=level1
+rhel9-server-02 ansible_host=192.168.1.101 cis_profile=level1
+# rhel9-web-01 ansible_host=192.168.1.102 cis_profile=level2
+
+# Groups for targeted execution
+[rhel9_servers:vars]
+ansible_user=root
+ansible_become=yes
+ansible_become_method=sudo
+
+# Environment-specific groups
+[production]
+# rhel9-server-01
+
+[staging]
+# rhel9-server-02
+
+[development]
+# localhost ansible_connection=local
+
+# Profile groups
+[level1]
+rhel9-server-01
+rhel9-server-02
+
+[level2]
+# rhel9-web-01

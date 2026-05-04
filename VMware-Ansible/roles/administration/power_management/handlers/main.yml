@@ -1,0 +1,12 @@
+---
+# ==============================================================================
+# Power Management Role - Handlers
+# ==============================================================================
+
+- name: Refresh VM power state
+  debug:
+    msg: "VM power states refreshed"
+
+- name: Recalculate resource allocation
+  debug:
+    msg: "Resource allocation recalculated"

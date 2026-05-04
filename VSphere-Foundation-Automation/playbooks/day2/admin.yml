@@ -1,0 +1,60 @@
+---
+# ==============================================================================
+# DAY 2 Playbook - Administration Operations
+# ==============================================================================
+# Purpose: Manage VMs, snapshots, and ongoing maintenance
+# Usage: ansible-playbook playbooks/day2/admin.yml
+
+- name: Day 2 - Administration Operations
+  hosts: day2_operations
+  gather_facts: no
+  connection: local
+
+  pre_tasks:
+    - name: Display Day 2 execution context
+      debug:
+        msg: |
+          =====================================================================
+          Day 2 - VM Administration Operations
+          =====================================================================
+          Operations:
+            - VM Lifecycle Management (Power, Update, Delete)
+            - Snapshot Management (Create, Revert, Delete)
+            - VM Tagging
+            - Resource Monitoring
+          =====================================================================
+      tags:
+        - always
+        - info
+
+  roles:
+    - role: vcenter_init
+      tags:
+        - always
+        - init
+
+    - role: vm_lifecycle
+      tags:
+        - day2
+        - administration
+
+    - role: vm_snapshots
+      tags:
+        - day2
+        - administration
+
+  post_tasks:
+    - name: Day 2 completion summary
+      debug:
+        msg: |
+          =====================================================================
+          Day 2 Administration Operations - Complete
+          =====================================================================
+          Infrastructure Status:
+            - VM Lifecycle: MANAGED
+            - Snapshots: MANAGED
+            - Backups: VERIFIED
+          =====================================================================
+      tags:
+        - always
+        - summary

@@ -1,0 +1,25 @@
+---
+# ==============================================================================
+# Role: cis_logging_auditing - Default Variables
+# ==============================================================================
+
+cis_logging_auditing:
+  # Auditd Configuration
+  auditd_enabled: true
+  auditd_buffer_size: 8192
+  
+  # Rsyslog Configuration
+  rsyslog_enabled: true
+  rsyslog_log_files_mode: "0640"
+  rsyslog_log_files_owner: "root"
+  rsyslog_log_files_group: "adm"
+  
+  # Log retention
+  log_retention_days: 30
+  archived_logs_retention_days: 90
+  
+  # Remote syslog (optional)
+  syslog_server: ""
+  syslog_port: 514
+
+enable_logging_auditing: true

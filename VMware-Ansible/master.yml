@@ -1,0 +1,132 @@
+---
+# ==============================================================================
+# Master Playbook - Complete VMware Automation
+# ==============================================================================
+# Orchestrates all Day 0, Day 1, and Day 2 operations in sequence
+#
+# Usage:
+#   ansible-playbook master.yml --vault-password-file=.vault_pass
+#   ansible-playbook master.yml --tags=day0 --vault-password-file=.vault_pass
+#   ansible-playbook master.yml --tags=day1 -e 'vm_name=myvm vm_template=centos-9-base'
+
+---
+- name: "Complete VMware Infrastructure Automation"
+  hosts: vmware_infrastructure
+  gather_facts: true
+  vars_files:
+    - group_vars/vmware_infrastructure.yml
+
+  pre_tasks:
+    - name: Display master playbook information
+      debug:
+        msg:
+          - ""
+          - "=========================================="
+          - "VMware Complete Automation Master"
+          - "=========================================="
+          - "vCenter: {{ vcenter_hostname }}"
+          - "Available Tags: day0, day1, day2, all"
+          - "Selected Tags: {{ ansible_run_tags | default(['all']) | join(', ') }}"
+          - "=========================================="
+          - ""
+      tags:
+        - always
+
+  roles:
+    # Day 0 - Foundation
+    - role: foundation/datacenter
+      tags:
+        - day0
+        - foundation
+      when: "'day0' in ansible_run_tags or 'all' in ansible_run_tags"
+
+    - role: foundation/cluster
+      tags:
+        - day0
+        - foundation
+      when: "'day0' in ansible_run_tags or 'all' in ansible_run_tags"
+
+    - role: foundation/folders
+      tags:
+        - day0
+        - foundation
+      when: "'day0' in ansible_run_tags or 'all' in ansible_run_tags"
+
+    - role: foundation/dvs
+      tags:
+        - day0
+        - foundation
+      when: "'day0' in ansible_run_tags or 'all' in ansible_run_tags"
+
+    # Day 1 - Provisioning
+    - role: provisioning/vm_clone
+      tags:
+        - day1
+        - provisioning
+      when: 
+        - vm_name is defined
+        - "'day1' in ansible_run_tags or 'all' in ansible_run_tags"
+
+    - role: provisioning/customization
+      tags:
+        - day1
+        - provisioning
+      when: 
+        - vm_name is defined
+        - "'day1' in ansible_run_tags or 'all' in ansible_run_tags"
+
+    - role: provisioning/hardware
+      tags:
+        - day1
+        - provisioning
+      when: 
+        - vm_name is defined
+        - "'day1' in ansible_run_tags or 'all' in ansible_run_tags"
+
+    # Day 2 - Administration
+    - role: administration/snapshots
+      tags:
+        - day2
+        - administration
+        - snapshots
+      when: "'day2' in ansible_run_tags or 'snapshots' in ansible_run_tags"
+
+    - role: administration/power_management
+      tags:
+        - day2
+        - administration
+        - power
+      when: "'day2' in ansible_run_tags or 'power' in ansible_run_tags"
+
+    - role: administration/host_maintenance
+      tags:
+        - day2
+        - administration
+        - maintenance
+      when: "'day2' in ansible_run_tags or 'maintenance' in ansible_run_tags"
+
+    - role: administration/reporting
+      tags:
+        - day2
+        - administration
+        - reporting
+      when: "'day2' in ansible_run_tags or 'reporting' in ansible_run_tags"
+
+  post_tasks:
+    - name: Display completion summary
+      debug:
+        msg:
+          - ""
+          - "=========================================="
+          - "✓ Automation Tasks Complete"
+          - "=========================================="
+          - "Tags Executed: {{ ansible_run_tags | default(['all']) | join(', ') }}"
+          - ""
+          - "Documentation:"
+          - "- README.md: Comprehensive project documentation"
+          - "- docs/QUICK_START.md: Quick start guide"
+          - "- docs/EXAMPLES.md: Usage examples and scenarios"
+          - ""
+          - "=========================================="
+      tags:
+        - always

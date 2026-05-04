@@ -1,0 +1,178 @@
+---
+# ==============================================================================
+# Role: cis_services - System Services Hardening
+# ==============================================================================
+# Purpose: Disable unnecessary services and enable essential services
+
+- name: CIS 7.1 - Disable unnecessary services
+  block:
+    - name: Gather service facts
+      service_facts:
+      tags:
+        - cis_7_1
+        - services
+
+    - name: Disable unnecessary services (CIS 7.1.1)
+      systemd:
+        name: "{{ item }}"
+        enabled: false
+        state: stopped
+      loop: "{{ cis_services.services_to_disable }}"
+      when: item in ansible_facts.services
+      failed_when: false
+      tags:
+        - cis_7_1_1
+        - services
+
+    - name: Mask unnecessary services to prevent manual start
+      systemd:
+        name: "{{ item }}"
+        masked: true
+      loop: "{{ cis_services.services_to_disable }}"
+      when: item in ansible_facts.services
+      failed_when: false
+      tags:
+        - cis_7_1
+        - services
+
+    - name: Display disabled services
+      debug:
+        msg: "Disabled unnecessary services: {{ cis_services.services_to_disable | join(', ') }}"
+      tags:
+        - services
+        - always
+
+  tags:
+    - cis_7_1
+    - service_hardening
+
+- name: CIS 7.2 - Enable essential services
+  block:
+    - name: Install essential services
+      package:
+        name: "{{ item }}"
+        state: present
+      loop: "{{ cis_services.services_to_enable }}"
+      failed_when: false
+      tags:
+        - cis_7_2
+        - essential_services
+
+    - name: Enable and start essential services (CIS 7.2.1)
+      systemd:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop: "{{ cis_services.services_to_enable }}"
+      when: item in ansible_facts.services
+      failed_when: false
+      tags:
+        - cis_7_2_1
+        - essential_services
+
+    - name: Display enabled services
+      debug:
+        msg: "Enabled essential services: {{ cis_services.services_to_enable | join(', ') }}"
+      tags:
+        - essential_services
+        - always
+
+  tags:
+    - cis_7_2
+    - service_hardening
+
+- name: CIS 7.3 - Service-specific hardening
+  block:
+    - name: Harden cron service (CIS 7.3.1)
+      file:
+        path: /etc/cron.d
+        mode: "0700"
+      tags:
+        - cis_7_3_1
+        - cron
+
+    - name: Restrict at service (CIS 7.3.2)
+      file:
+        path: /etc/at.allow
+        state: touch
+        mode: "0644"
+      tags:
+        - cis_7_3_2
+        - at_service
+
+    - name: Ensure SSH is configured (CIS 7.3.3)
+      systemd:
+        name: sshd
+        enabled: true
+        state: started
+      tags:
+        - cis_7_3_3
+        - ssh
+
+    - name: Display service hardening summary
+      debug:
+        msg: "Service-specific hardening completed"
+      tags:
+        - service_hardening
+        - always
+
+  tags:
+    - cis_7_3
+    - service_hardening
+
+- name: CIS 7.4 - Service listeners audit
+  block:
+    - name: Identify active network listeners (CIS 7.4.1)
+      shell: ss -tulpn 2>/dev/null | grep LISTEN || netstat -tulpn 2>/dev/null | grep LISTEN
+      register: active_listeners
+      failed_when: false
+      changed_when: false
+      tags:
+        - cis_7_4_1
+        - listeners
+
+    - name: Report active listeners
+      debug:
+        msg: |
+          Active network listeners (review for necessity):
+          {{ active_listeners.stdout_lines | default(['None found']) | join('\n') }}
+      tags:
+        - listeners
+        - always
+
+    - name: Identify unnecessary network protocols (CIS 7.4.2)
+      shell: lsmod | grep -E "dccp|sctp|rds|tipc"
+      register: network_protocols
+      failed_when: false
+      changed_when: false
+      tags:
+        - cis_7_4_2
+        - protocols
+
+    - name: Report loaded protocols
+      debug:
+        msg: "Loaded network protocols: {{ network_protocols.stdout_lines | default(['None found (Good!)']) | join('\n') }}"
+      tags:
+        - protocols
+        - always
+
+  tags:
+    - cis_7_4
+    - service_hardening
+
+- name: Summary - System Services Hardening
+  debug:
+    msg: |
+      =====================================================================
+      System Services Hardening Summary:
+      =====================================================================
+      ✓ Unnecessary services disabled and masked
+      ✓ Essential services enabled
+      ✓ Cron service hardened
+      ✓ SSH service configured
+      ✓ Network listeners reviewed
+      ✓ Network protocols audit completed
+      =====================================================================
+  tags:
+    - always
+    - service_hardening

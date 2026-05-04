@@ -1,0 +1,77 @@
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+kubernetesVersion: v{{ kubernetes_version }}
+clusterName: kubernetes
+controlPlaneEndpoint: "{{ loadbalancer_vip }}:6443"
+etcd:
+  external:
+    endpoints:
+{% for host in groups['etcd'] %}
+    - "https://{{ hostvars[host]['ansible_default_ipv4']['address'] }}:2379"
+{% endfor %}
+    caFile: "{{ etcd_cert_path }}/ca.pem"
+    certFile: "{{ etcd_cert_path }}/client.pem"
+    keyFile: "{{ etcd_cert_path }}/client-key.pem"
+networking:
+  serviceSubnet: "{{ service_network_cidr }}"
+  podSubnet: "{{ pod_network_cidr }}"
+  dnsDomain: "{{ cluster_domain }}"
+apiServer:
+  certSANs:
+  - "kubernetes"
+  - "kubernetes.default"
+  - "kubernetes.default.svc"
+  - "kubernetes.default.svc.{{ cluster_domain }}"
+  - "{{ loadbalancer_vip }}"
+{% for host in groups['master'] %}
+  - "{{ hostvars[host]['ansible_hostname'] }}"
+  - "{{ hostvars[host]['ansible_default_ipv4']['address'] }}"
+{% endfor %}
+  - "127.0.0.1"
+  extraArgs:
+    admission-control-config-file: "/etc/kubernetes/admission-control-config.yaml"
+    audit-log-path: "/var/log/kubernetes/audit/audit.log"
+    audit-log-maxage: "{{ audit_log_maxage }}"
+    audit-log-maxbackup: "{{ audit_log_maxbackup }}"
+    audit-log-maxsize: "{{ audit_log_maxsize }}"
+    bind-address: "0.0.0.0"
+    encryption-provider-config: "/etc/kubernetes/encryption-config.yaml"
+controllerManager:
+  extraArgs:
+    bind-address: "0.0.0.0"
+    cluster-cidr: "{{ pod_network_cidr }}"
+    service-cluster-ip-range: "{{ service_network_cidr }}"
+    cluster-signing-duration: "87600h"
+    feature-gates: "{{ feature_gates | join(',') }}"
+scheduler:
+  extraArgs:
+    bind-address: "0.0.0.0"
+certificatesDir: "{{ ssl_cert_path }}"
+imageRepository: "registry.k8s.io"
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+address: 0.0.0.0
+port: 10250
+readOnlyPort: 0
+cgroupDriver: systemd
+hairpinMode: promiscuous-bridge
+serializeImagePulls: false
+featureGates:
+  "{{ feature_gates | join(',') }}"
+kubeReserved:
+  cpu: "{{ kubelet_system_reserved_cpu }}"
+  memory: "{{ kubelet_system_reserved_memory }}"
+maxPods: {{ kubelet_max_pods }}
+tlsCertFile: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.pem"
+tlsPrivateKeyFile: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}-key.pem"
+clusterDomain: "{{ cluster_domain }}"
+clusterDNS:
+- "{{ cluster_dns }}"
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+bindAddress: 0.0.0.0
+healthzBindAddress: 0.0.0.0:10256
+mode: "iptables"
+clusterCIDR: "{{ pod_network_cidr }}"

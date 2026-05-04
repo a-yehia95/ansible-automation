@@ -1,0 +1,35 @@
+---
+# ==============================================================================
+# Role: cis_package_management - Default Variables
+# ==============================================================================
+
+cis_package_management:
+  # Package manager
+  package_manager: dnf
+  
+  # Update policy
+  auto_updates_enabled: true
+  auto_updates_method: "download"  # download, install
+  
+  # Unneeded packages to remove
+  packages_to_remove:
+    - xserver-xorg*
+    - avahi-daemon
+    - dhcp
+    - bind
+    - vsftpd
+    - httpd
+    - dovecot
+    - samba
+    - snmpd
+  
+  # Required packages to ensure installed
+  packages_to_install:
+    - aide
+    - aide-lib
+    - rsyslog
+    - cronie
+    - firewalld
+    - cryptsetup
+
+enable_package_management: true

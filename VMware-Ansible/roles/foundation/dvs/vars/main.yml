@@ -1,0 +1,7 @@
+---
+# ==============================================================================
+# DVS (Distributed Virtual Switch) Role - Vars
+# ==============================================================================
+
+dvs_state: "present"  # Options: present, absent
+port_group_state: "present"

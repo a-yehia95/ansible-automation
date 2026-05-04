@@ -1,0 +1,101 @@
+---
+# ==============================================================================
+# Kubeadm Worker Join Role - Main Task File
+# ==============================================================================
+# Purpose: Join worker nodes to the Kubernetes cluster
+# Requires bootstrap token and CA cert hash from the first master initialization
+# ==============================================================================
+
+- name: Pre-flight checks for worker join
+  block:
+    - name: Check if node already joined
+      stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: kubelet_conf
+      changed_when: false
+
+    - name: Display join status
+      debug:
+        msg: "{{ 'Node already joined' if kubelet_conf.stat.exists else 'Ready to join cluster' }}"
+
+- name: Fetch join information from first master
+  block:
+    - name: Retrieve join information from master01
+      set_fact:
+        k8s_bootstrap_token: "{{ hostvars['master01']['k8s_bootstrap_token'] | default('') }}"
+        k8s_token_ca_hash: "{{ hostvars['master01']['k8s_token_ca_hash'] | default('') }}"
+        k8s_api_endpoint: "{{ control_plane_endpoint }}"
+      when: hostvars['master01']['k8s_bootstrap_token'] is defined
+
+    - name: Verify join information availability
+      assert:
+        that:
+          - k8s_bootstrap_token | length > 0
+          - k8s_token_ca_hash | length > 0
+        fail_msg: "Join information not available from master01"
+        success_msg: "Join information retrieved successfully"
+
+- name: Join worker node to cluster
+  block:
+    - name: Run kubeadm join for worker node
+      command: >
+        kubeadm join {{ k8s_api_endpoint }}
+        --token {{ k8s_bootstrap_token }}
+        --discovery-token-ca-cert-hash sha256:{{ k8s_token_ca_hash }}
+        --cri-socket unix:///run/crio/crio.sock
+      register: kubeadm_join_result
+      changed_when: kubeadm_join_result.changed
+      failed_when:
+        - kubeadm_join_result.rc != 0
+        - "'already' not in kubeadm_join_result.stderr"
+      when: not kubelet_conf.stat.exists
+
+    - name: Display kubeadm join output
+      debug:
+        msg: "{{ kubeadm_join_result.stdout_lines | default(['Node already joined']) }}"
+
+  rescue:
+    - name: Display join error
+      debug:
+        msg: "{{ kubeadm_join_result.stderr_lines | default(['Unknown error']) }}"
+    - fail:
+        msg: "kubeadm join for worker node failed"
+
+- name: Configure kubeconfig for root user
+  block:
+    - name: Ensure .kube directory exists
+      file:
+        path: /root/.kube
+        state: directory
+        mode: "0755"
+
+    - name: Copy kubelet.conf to kubeconfig
+      copy:
+        src: /etc/kubernetes/kubelet.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        mode: "0600"
+        owner: root
+        group: root
+      register: kubeconfig_copy
+      changed_when: kubeconfig_copy.changed
+      failed_when: false
+
+- name: Wait for node to be ready
+  block:
+    - name: Get node readiness status (with retries)
+      command: >
+        kubectl get node {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+      register: node_ready
+      changed_when: false
+      until: node_ready.stdout == "True"
+      retries: 30
+      delay: 10
+      failed_when: false
+
+    - name: Display worker node join status
+      debug:
+        msg:
+          - "✓ Worker Node Successfully Joined"
+          - "  Node: {{ inventory_hostname }}"
+          - "  Status: {{ 'Ready' if node_ready.stdout == 'True' else 'Initializing' }}"

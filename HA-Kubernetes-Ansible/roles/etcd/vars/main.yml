@@ -1,0 +1,32 @@
+---
+# ==============================================================================
+# ETCD Role Variables
+# ==============================================================================
+
+etcd_version: "3.5.9"
+etcd_port: 2379
+etcd_peer_port: 2380
+etcd_initial_cluster_state: "new"  # or "existing" for adding nodes
+etcd_listen_client_urls: "https://0.0.0.0:2379"
+etcd_advertise_client_urls: "https://{{ ansible_default_ipv4.address }}:2379"
+etcd_listen_peer_urls: "https://0.0.0.0:2380"
+etcd_initial_advertise_peer_urls: "https://{{ ansible_default_ipv4.address }}:2380"
+
+# Cluster configuration
+etcd_initial_cluster: "{% for host in groups['etcd'] %}{{ hostvars[host]['ansible_hostname'] }}=https://{{ hostvars[host]['ansible_default_ipv4']['address'] }}:2380{% if not loop.last %},{% endif %}{% endfor %}"
+etcd_name: "{{ ansible_hostname }}"
+
+# Performance tuning
+etcd_max_request_bytes: 33554432  # 32MB
+etcd_quota_backend_bytes: 8589934592  # 8GB
+
+# Auto compaction
+etcd_auto_compaction_mode: "revision"
+etcd_auto_compaction_retention: 1000
+
+# Snapshot configuration
+etcd_snapshot_count: 10000
+
+# Election timeout (ms)
+etcd_election_timeout: 1000
+etcd_heartbeat_interval: 100

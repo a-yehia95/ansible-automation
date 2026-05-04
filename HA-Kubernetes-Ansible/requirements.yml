@@ -1,0 +1,21 @@
+---
+# ==============================================================================
+# HA Kubernetes Cluster - Ansible Collections Requirements
+# ==============================================================================
+# Usage: ansible-galaxy install -r requirements.yml
+# ==============================================================================
+
+collections:
+  # Core Ansible collections
+  - name: ansible.builtin
+    version: ">=2.12.0"
+
+  # Community General (for additional modules)
+  - name: community.general
+    version: ">=7.0.0"
+
+  # Community Kubernetes (for Kubernetes operations)
+  - name: community.kubernetes
+    version: ">=3.0.0"
+
+roles: []

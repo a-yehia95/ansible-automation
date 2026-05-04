@@ -1,0 +1,20 @@
+# ==============================================================================
+# Vault Password File Example
+# ==============================================================================
+# This file shows how to set up Ansible Vault password management
+# 
+# Usage:
+# 1. Copy this file: cp .vault_pass.example .vault_pass
+# 2. Add your vault password to .vault_pass
+# 3. Make it executable: chmod 600 .vault_pass
+# 4. Use with ansible-vault: ansible-playbook -i inventory/hosts playbooks/main.yml
+#
+# Alternatively, use environment variable:
+# export ANSIBLE_VAULT_PASSWORD_FILE=./.vault_pass
+# 
+# Or use ansible-vault interactively:
+# ansible-vault encrypt inventory/group_vars/vcenter_servers/vault.yml
+# ansible-vault view inventory/group_vars/vcenter_servers/vault.yml
+
+# Your vault password here (change this!)
+# make it strong and random

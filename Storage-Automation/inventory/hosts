@@ -1,0 +1,32 @@
+# ==============================================================================
+# Storage Array Inventory
+# ==============================================================================
+# Define storage arrays and their connection parameters
+# Update hostnames/IPs to match your environment
+# ==============================================================================
+
+[pure_storage_flasharray]
+# Pure Storage FlashArray endpoints
+# Example: flasharray-prod01.example.com
+# flasharray-prod01 ansible_host=192.168.1.100 ansible_connection=local
+# flasharray-prod02 ansible_host=192.168.1.101 ansible_connection=local
+
+[pure_storage_flasharray:vars]
+ansible_connection = local
+storage_vendor = pure
+storage_type = flasharray
+
+[dell_powerstore]
+# Dell PowerStore endpoints
+# Example: powerstore-prod01.example.com
+# powerstore-prod01 ansible_host=192.168.2.100 ansible_connection=local
+# powerstore-prod02 ansible_host=192.168.2.101 ansible_connection=local
+
+[dell_powerstore:vars]
+ansible_connection = local
+storage_vendor = dell
+storage_type = powerstore
+
+[all:vars]
+# Ansible behavior
+ansible_python_interpreter = /usr/bin/python3

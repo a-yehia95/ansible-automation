@@ -1,0 +1,276 @@
+---
+# ==============================================================================
+# WORKER Role Tasks: Kubernetes Worker Nodes
+# ==============================================================================
+# This role sets up Kubernetes worker (compute) nodes
+# Includes kubelet and kube-proxy
+
+# ==============================================================================
+# SECTION 1: Generate Kubelet Certificates
+# ==============================================================================
+
+- name: Generate kubelet certificate for worker node
+  openssl_privatekey:
+    path: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}-key.pem"
+    size: 2048
+    type: RSA
+    owner: root
+    group: root
+    mode: '0600'
+  tags:
+    - worker-certs
+
+- name: Generate kubelet CSR for worker node
+  openssl_csr:
+    path: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.csr"
+    privatekey_path: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}-key.pem"
+    subject_alt_name: "DNS:{{ inventory_hostname }},DNS:{{ ansible_hostname }},IP:{{ ansible_default_ipv4.address }}"
+    common_name: "system:node:{{ inventory_hostname }}"
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    extended_key_usage:
+      - serverAuth
+      - clientAuth
+    O_Name: "system:nodes"
+  tags:
+    - worker-certs
+
+- name: Generate kubelet certificate for worker node
+  openssl_certificate:
+    path: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.pem"
+    csr_path: "{{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.csr"
+    ownca_path: "{{ ssl_cert_path }}/ca.pem"
+    ownca_privatekey_path: "{{ ssl_cert_path }}/ca-key.pem"
+    provider: ownca
+    owner: root
+    group: root
+    mode: '0644'
+  tags:
+    - worker-certs
+
+# ==============================================================================
+# SECTION 2: Fetch Kubernetes CA and Certificates
+# ==============================================================================
+
+- name: Fetch CA certificate from first master
+  fetch:
+    src: "{{ ssl_cert_path }}/ca.pem"
+    dest: "/tmp/ca.pem"
+    flat: yes
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - worker-certs
+    - fetch-certs
+
+- name: Copy CA certificate to worker nodes
+  copy:
+    src: "/tmp/ca.pem"
+    dest: "{{ ssl_cert_path }}/ca.pem"
+    owner: root
+    group: root
+    mode: '0644'
+  tags:
+    - worker-certs
+
+# ==============================================================================
+# SECTION 3: Create Kubelet Kubeconfig
+# ==============================================================================
+
+- name: Create kubelet kubeconfig for worker node
+  copy:
+    content: |
+      apiVersion: v1
+      kind: Config
+      clusters:
+      - cluster:
+          certificate-authority: {{ ssl_cert_path }}/ca.pem
+          server: https://{{ loadbalancer_vip }}:6443
+        name: kubernetes
+      contexts:
+      - context:
+          cluster: kubernetes
+          user: system:node:{{ inventory_hostname }}
+        name: default
+      current-context: default
+      users:
+      - name: system:node:{{ inventory_hostname }}
+        user:
+          client-certificate: {{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.pem
+          client-key: {{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}-key.pem
+    dest: /var/lib/kubelet/kubeconfig
+    owner: root
+    group: root
+    mode: '0644'
+  tags:
+    - worker-kubeconfig
+
+# ==============================================================================
+# SECTION 4: Configure Kubelet
+# ==============================================================================
+
+- name: Create kubelet configuration file for worker node
+  copy:
+    content: |
+      apiVersion: kubelet.config.k8s.io/v1beta1
+      kind: KubeletConfiguration
+      address: 0.0.0.0
+      port: 10250
+      readOnlyPort: 0
+      cgroupDriver: systemd
+      hairpinMode: promiscuous-bridge
+      serializeImagePulls: false
+      maxPods: {{ kubelet_max_pods }}
+      tlsCertFile: {{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}.pem
+      tlsPrivateKeyFile: {{ ssl_cert_path }}/kubelet-{{ inventory_hostname }}-key.pem
+      clusterDomain: {{ cluster_domain }}
+      clusterDNS:
+      - {{ cluster_dns }}
+      kubeReserved:
+        cpu: "{{ kubelet_system_reserved_cpu }}"
+        memory: "{{ kubelet_system_reserved_memory }}"
+      systemReserved:
+        cpu: "{{ kubelet_system_reserved_cpu }}"
+        memory: "{{ kubelet_system_reserved_memory }}"
+      evictionHard:
+        memory.available: "5%"
+        nodefs.available: "10%"
+      evictionSoft:
+        memory.available: "10%"
+        nodefs.available: "15%"
+      evictionSoftGracePeriod:
+        memory.available: "1m30s"
+        nodefs.available: "2m"
+    dest: /var/lib/kubelet/kubelet-config.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart kubelet
+  tags:
+    - worker-kubelet-config
+
+# ==============================================================================
+# SECTION 5: Join Worker Node to Cluster
+# ==============================================================================
+
+- name: Get kubeadm join command from master
+  shell: |
+    kubeadm token create --print-join-command
+  register: kubeadm_join_cmd
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - worker-join
+
+- name: Store join command
+  set_fact:
+    join_command: "{{ kubeadm_join_cmd.stdout }}"
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - worker-join
+
+- name: Join worker node to cluster
+  shell: |
+    {{ hostvars[groups['master'][0]]['join_command'] }}
+  when: 
+    - inventory_hostname in groups['worker']
+    - inventory_hostname != groups['master'][0]
+  register: kubeadm_join_result
+  retries: 3
+  delay: 10
+  tags:
+    - worker-join
+
+# ==============================================================================
+# SECTION 6: Start Kubelet Service
+# ==============================================================================
+
+- name: Start and enable kubelet on worker nodes
+  systemd:
+    name: kubelet
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  tags:
+    - worker-services
+
+# ==============================================================================
+# SECTION 7: Wait for Node to Be Ready
+# ==============================================================================
+
+- name: Wait for worker node to be ready
+  shell: |
+    kubectl --kubeconfig=/var/lib/kubelet/kubeconfig \
+      get nodes {{ inventory_hostname }} 2>/dev/null | grep -i "ready"
+  retries: 30
+  delay: 10
+  register: worker_ready
+  until: worker_ready.rc == 0
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - worker-join
+    - verify
+
+# ==============================================================================
+# SECTION 8: Label Worker Nodes
+# ==============================================================================
+
+- name: Label worker nodes
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+      label node {{ inventory_hostname }} \
+      node-role.kubernetes.io/worker=worker \
+      --overwrite
+  when: 
+    - inventory_hostname in groups['worker']
+    - inventory_hostname != groups['master'][0]
+    - inventory_hostname == groups['master'][0]
+  tags:
+    - worker-labels
+
+# ==============================================================================
+# SECTION 9: Configure Worker Node Networking
+# ==============================================================================
+
+- name: Ensure CNI network plugin is configured
+  file:
+    path: /etc/cni/net.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - worker-network
+
+# ==============================================================================
+# SECTION 10: Setup Container Runtime for Worker
+# ==============================================================================
+
+- name: Verify containerd is running on worker
+  systemd:
+    name: containerd
+    state: started
+    enabled: yes
+  tags:
+    - worker-runtime
+
+# ==============================================================================
+# SECTION 11: Verify Worker Node
+# ==============================================================================
+
+- name: Verify worker node is ready
+  shell: |
+    kubectl --kubeconfig=/var/lib/kubelet/kubeconfig \
+      get nodes {{ inventory_hostname }} -o wide
+  register: worker_status
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - worker-verify
+    - always
+
+- name: Display worker node status
+  debug:
+    msg: "{{ worker_status.stdout_lines }}"
+  when: inventory_hostname == groups['master'][0]
+  tags:
+    - worker-verify
+    - always

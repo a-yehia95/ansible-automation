@@ -1,0 +1,41 @@
+global_defs {
+  notification_email {
+    admin@kubernetes.local
+  }
+  notification_email_from keepalived@{{ inventory_hostname }}
+  smtp_server localhost
+  smtp_connect_timeout 30
+  router_id {{ inventory_hostname }}
+  script_user root root
+  enable_script_security
+}
+
+# Virtual IP configuration (Backup)
+vrrp_script check_apiserver {
+  script "/usr/local/bin/check-apiserver.sh"
+  interval {{ health_check_interval }}
+  timeout {{ health_check_timeout }}
+  fall {{ health_check_fall }}
+  rise {{ health_check_rise }}
+  weight 2
+}
+
+vrrp_instance kube_control_plane {
+  state BACKUP
+  interface {{ loadbalancer_interface }}
+  virtual_router_id 51
+  priority {{ keepalived_priority_backup }}
+  advert_int 1
+  authentication {
+    auth_type PASS
+    auth_pass {{ keepalived_auth_pass }}
+  }
+  virtual_ipaddress {
+    {{ loadbalancer_vip }}/24
+  }
+  track_script {
+    check_apiserver
+  }
+  notify_master "/usr/local/bin/notify-master.sh"
+  notify_backup "/usr/local/bin/notify-backup.sh"
+}

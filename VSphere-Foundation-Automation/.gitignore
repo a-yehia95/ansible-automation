@@ -1,0 +1,70 @@
+# ==============================================================================
+# Git Ignore - VSphere Foundation Automation
+# ==============================================================================
+
+# Ansible
+*.retry
+*.pyc
+__pycache__/
+.pytest_cache/
+.molecule/
+molecule/.molecule/
+
+# Vault files
+vault_pass
+.vault_pass
+.vault_pass.txt
+!.vault_pass.example
+
+# Credentials and secrets
+inventory/host_vars/*/vault.yml
+inventory/group_vars/*/vault.yml
+group_vars/*/vault.yml
+host_vars/*/vault.yml
+inventory/.credentials
+*.key
+*.pem
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+ansible.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Generated facts
+facts/
+*.fact
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Python
+venv/
+env/
+.venv/
+pipenv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+config/*.decrypted
+
+# Exclude all vaults except examples
+!.vault_pass.example
+!inventory/group_vars/**/vault.example.yml

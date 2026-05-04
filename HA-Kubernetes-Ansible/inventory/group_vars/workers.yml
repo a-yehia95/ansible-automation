@@ -1,0 +1,17 @@
+---
+# ==============================================================================
+# Configuration for Worker Nodes (Data Plane)
+# ==============================================================================
+
+# Worker Node Roles
+node_role: worker
+
+# Kubelet Configuration
+kubelet_node_labels: "node-role.kubernetes.io/worker="
+kubelet_node_taints: []
+
+# Maximum pods per node
+max_pods: 110
+
+# Worker-specific tolerations (none by default)
+worker_taints: []

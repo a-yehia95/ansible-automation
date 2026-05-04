@@ -1,0 +1,207 @@
+---
+# ============================================================================
+# Common Role - Day 0 Provisioning: Basic System Configuration
+# ============================================================================
+
+# Hostname Configuration
+- name: Configure hostname
+  cisco.ios.ios_command:
+    commands:
+      - "configure terminal"
+      - "hostname {{ hostname }}"
+      - "end"
+  when: hostname is defined
+  tags:
+    - day0
+    - provisioning
+
+# Domain Configuration
+- name: Configure domain name
+  cisco.ios.ios_command:
+    commands:
+      - "configure terminal"
+      - "ip domain-name {{ domain_name }}"
+      - "end"
+  when: domain_name is defined
+  tags:
+    - day0
+    - provisioning
+
+# DNS Configuration
+- name: Configure DNS servers
+  cisco.ios.ios_command:
+    commands:
+      - "configure terminal"
+      - "{% for dns in dns_servers %}ip name-server {{ dns }}\n{% endfor %}"
+      - "end"
+  when: dns_servers is defined
+  tags:
+    - day0
+    - provisioning
+
+# NTP Configuration (Idempotent)
+- name: Configure NTP servers
+  cisco.ios.ios_config:
+    lines:
+      - "ntp server {{ item }} prefer"
+    match: line
+  loop: "{{ ntp_servers }}"
+  when: ntp_servers is defined
+  tags:
+    - day0
+    - provisioning
+
+# AAA Configuration (TACACS+)
+- name: Configure TACACS+ servers
+  cisco.ios.ios_config:
+    lines:
+      - "tacacs server {{ item.host }}"
+      - "address {{ item.host }}"
+      - "key 7 {{ item.key }}"
+      - "timeout {{ item.timeout | default(10) }}"
+      - "port {{ item.port }}"
+    parents: "tacacs server {{ item.host }}"
+    match: exact
+  loop: "{{ tacacs_servers }}"
+  when:
+    - tacacs_servers is defined
+    - aaa_enabled | bool
+  tags:
+    - day0
+    - aaa
+    - security
+
+# AAA Method Lists
+- name: Configure AAA authentication method lists
+  cisco.ios.ios_config:
+    lines:
+      - "aaa new-model"
+      - "aaa authentication login default group tacacs+ local"
+      - "aaa authentication enable default group tacacs+ enable"
+      - "aaa authorization exec default group tacacs+ local"
+      - "aaa accounting exec default start-stop group tacacs+"
+    match: line
+  when: aaa_enabled | bool
+  tags:
+    - day0
+    - aaa
+    - security
+
+# SSH Hardening
+- name: Configure SSH hardening
+  cisco.ios.ios_config:
+    lines:
+      - "ip ssh version 2"
+      - "ip ssh rsa keypair-name SSH-KEY"
+      - "ip ssh authentication retries {{ ssh_config.max_attempts }}"
+      - "ip ssh time-out {{ ssh_config.lifetime }}"
+      - "ip ssh pubkey-chain"
+      - "line vty 0 4"
+      - "transport input ssh"
+      - "exec-timeout 30 0"
+      - "logging synchronous"
+      - "exit"
+    match: line
+  when: ssh_config is defined
+  tags:
+    - day0
+    - security
+
+# Generate RSA Keys
+- name: Generate RSA encryption keys
+  cisco.ios.ios_command:
+    commands:
+      - "configure terminal"
+      - "crypto key generate rsa modulus {{ ssh_config.rsa_keysize }}"
+      - "end"
+  ignore_errors: true  # Key may already exist
+  tags:
+    - day0
+    - security
+
+# Banner Configuration
+- name: Configure login banner
+  cisco.ios.ios_config:
+    lines:
+      - "banner motd ^C{{ system_config.login_banner }}^C"
+    match: line
+  when: system_config.login_banner is defined
+  tags:
+    - day0
+    - provisioning
+
+# Syslog Configuration
+- name: Configure syslog servers
+  cisco.ios.ios_config:
+    lines:
+      - "logging {{ item }}"
+      - "logging facility {{ syslog_facility }}"
+    match: line
+  loop: "{{ syslog_servers }}"
+  when:
+    - syslog_servers is defined
+    - logging_enabled | bool
+  tags:
+    - day0
+    - logging
+
+# SNMP Configuration
+- name: Configure SNMP
+  cisco.ios.ios_config:
+    lines:
+      - "snmp-server community {{ item.community }} {{ item.access_level }}"
+    match: line
+  loop: "{{ snmp_communities }}"
+  when:
+    - snmp_communities is defined
+    - snmp_enabled | bool
+  tags:
+    - day0
+    - monitoring
+
+- name: Configure SNMP trap hosts
+  cisco.ios.ios_config:
+    lines:
+      - "snmp-server host {{ item }} {{ snmp_communities[0].community }}"
+    match: line
+  loop: "{{ snmp_trap_hosts }}"
+  when:
+    - snmp_trap_hosts is defined
+    - snmp_enabled | bool
+  tags:
+    - day0
+    - monitoring
+
+# Console Logging Configuration
+- name: Enable console logging
+  cisco.ios.ios_config:
+    lines:
+      - "logging console informational"
+      - "logging buffered 512000"
+      - "logging timestamp log datetime msec"
+    match: line
+  tags:
+    - day0
+    - logging
+
+# Clock Configuration
+- name: Set system clock timezone
+  cisco.ios.ios_command:
+    commands:
+      - "configure terminal"
+      - "clock timezone UTC 0"
+      - "end"
+  tags:
+    - day0
+    - provisioning
+
+# Save Configuration
+- name: Save configuration (Day 0 complete)
+  cisco.ios.ios_command:
+    commands:
+      - "write memory"
+  when: not ansible_check_mode
+  tags:
+    - day0
+    - save_config
+  notify: Configuration saved

@@ -1,0 +1,12 @@
+---
+# ==============================================================================
+# Role: resource_pool_management - Defaults
+# ==============================================================================
+
+resource_pool_state: "present"
+resource_pool_cpu_shares: 4000
+resource_pool_cpu_limit: -1
+resource_pool_cpu_reservation: 0
+resource_pool_memory_shares: 4000
+resource_pool_memory_limit: -1
+resource_pool_memory_reservation: 0

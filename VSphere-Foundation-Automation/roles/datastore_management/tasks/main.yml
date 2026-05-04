@@ -1,0 +1,92 @@
+---
+# ==============================================================================
+# Role: datastore_management
+# Description: Configure and manage vSphere datastores
+# ==============================================================================
+
+- name: Manage vSphere Datastores
+  block:
+    - name: Query existing datastores
+      vmware.rest.vcenter_datastore_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+      register: existing_datastores
+      tags:
+        - datastore_query
+
+    - name: Display existing datastores
+      debug:
+        msg: |
+          Existing Datastores:
+          {% for ds in existing_datastores.value | default([]) %}
+          - Name: {{ ds.name }}
+            Type: {{ ds.type | default('N/A') }}
+            Capacity: {{ (ds.capacity | default(0) / 1024 / 1024 / 1024) | round(2) }} GB
+            Free Space: {{ (ds.free_space | default(0) / 1024 / 1024 / 1024) | round(2) }} GB
+          {% endfor %}
+        verbosity: 1
+      tags:
+        - datastore_query
+        - debug
+
+    - name: Mount VMFS datastore
+      vmware.rest.vcenter_datastore_vmfs_mount:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        host: "{{ ds.host | default(omit) }}"
+        datastore: "{{ ds.name }}"
+        state: present
+      register: vmfs_mount_result
+      loop: "{{ day0_config.datastores | default([]) | selectattr('datastore_type', 'equalto', 'vmfs') }}"
+      loop_control:
+        loop_var: ds
+      when: day0_config.datastores is defined
+      tags:
+        - datastore_vmfs
+
+    - name: Create NFS datastore
+      vmware.rest.vcenter_datastore_nfs_create:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        name: "{{ ds.name }}"
+        server: "{{ ds.nfs_server }}"
+        path: "{{ ds.nfs_path }}"
+        version: "{{ ds.nfs_version | default('nfs41') }}"
+        state: present
+      register: nfs_create_result
+      loop: "{{ day0_config.datastores | default([]) | selectattr('datastore_type', 'equalto', 'nfs') }}"
+      loop_control:
+        loop_var: ds
+      tags:
+        - datastore_nfs
+
+    - name: Display datastore management results
+      debug:
+        msg: |
+          Datastore Operations:
+          VMFS Mount Results: {{ vmfs_mount_result.results | default([]) | length }}
+          NFS Creation Results: {{ nfs_create_result.results | default([]) | length }}
+        verbosity: 0
+      tags:
+        - datastore_create
+        - debug
+
+  rescue:
+    - name: Handle datastore management error
+      debug:
+        msg: |
+          Error managing datastores:
+          {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags:
+        - error_handling
+
+  tags:
+    - datastore_management
+    - day0
+    - foundation

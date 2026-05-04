@@ -1,0 +1,184 @@
+---
+# ==============================================================================
+# Role: cis_package_management - Package Management Configuration
+# ==============================================================================
+# Purpose: Configure package manager, updates, and remove unnecessary packages
+
+- name: CIS 1.1 - Configure filesystem
+  block:
+    - name: Ensure separate partitions exist (Check/Informational)
+      shell: df -h | grep -E '^/.*(/|/tmp|/var|/var/tmp|/var/log|/var/log/audit|/home)'
+      register: partitions
+      failed_when: false
+      changed_when: false
+      tags:
+        - cis_1_1
+        - filesystem
+
+    - name: Report filesystem configuration
+      debug:
+        msg: |
+          Current partitions (verify separation):
+          {{ partitions.stdout | default('Not configured') }}
+      tags:
+        - filesystem
+        - always
+
+  tags:
+    - cis_1_1
+    - filesystem
+
+- name: CIS 1.2 - Configure software updates
+  block:
+    - name: Ensure package manager repositories are configured (CIS 1.2.1)
+      dnf:
+        name: dnf-plugins-core
+        state: present
+      tags:
+        - cis_1_2_1
+        - repositories
+
+    - name: Ensure GPG keys are configured (CIS 1.2.2)
+      command: rpm -q gpg-pubkey
+      register: gpg_keys
+      failed_when: false
+      changed_when: false
+      tags:
+        - cis_1_2_2
+        - repositories
+
+    - name: Report GPG key status
+      debug:
+        msg: "GPG keys installed: {{ gpg_keys.stdout_lines | default(['None found - verify required keys']) }}"
+      tags:
+        - repositories
+        - always
+
+    - name: Configure automatic updates (CIS 1.2.3)
+      block:
+        - name: Install dnf-automatic
+          package:
+            name: dnf-automatic
+            state: present
+          tags:
+            - cis_1_2_3
+            - auto_updates
+
+        - name: Configure dnf-automatic policy
+          lineinfile:
+            path: /etc/dnf/automatic.conf
+            line: "apply_updates = {{ 'yes' if cis_package_management.auto_updates_method == 'install' else 'no' }}"
+            regexp: "^apply_updates"
+            state: present
+          tags:
+            - cis_1_2_3
+            - auto_updates
+
+        - name: Enable dnf-automatic timer
+          systemd:
+            name: dnf-automatic.timer
+            enabled: "{{ cis_package_management.auto_updates_enabled }}"
+            state: "{{ 'started' if cis_package_management.auto_updates_enabled else 'stopped' }}"
+          tags:
+            - cis_1_2_3
+            - auto_updates
+
+      tags:
+        - cis_1_2_3
+        - auto_updates
+
+  tags:
+    - cis_1_2
+    - updates
+
+- name: CIS 1.3 - Remove unnecessary packages
+  block:
+    - name: Remove unnecessary packages (CIS 1.3.1)
+      package:
+        name: "{{ cis_package_management.packages_to_remove }}"
+        state: absent
+      tags:
+        - cis_1_3_1
+        - remove_packages
+
+    - name: Display removed packages
+      debug:
+        msg: "Removed unnecessary packages: {{ cis_package_management.packages_to_remove | join(', ') }}"
+      tags:
+        - remove_packages
+        - always
+
+  tags:
+    - cis_1_3
+    - packages
+
+- name: CIS 1.4 - Install required security packages
+  block:
+    - name: Install required packages (CIS 1.4.1)
+      package:
+        name: "{{ cis_package_management.packages_to_install }}"
+        state: present
+      tags:
+        - cis_1_4_1
+        - install_packages
+
+    - name: Display installed packages
+      debug:
+        msg: "Installed security packages: {{ cis_package_management.packages_to_install | join(', ') }}"
+      tags:
+        - install_packages
+        - always
+
+  tags:
+    - cis_1_4
+    - packages
+
+- name: CIS 1.5 - Configure filesystem integrity checking
+  block:
+    - name: Initialize AIDE database (CIS 1.5.1)
+      command: aideinit
+      args:
+        creates: /var/lib/aide/aide.db
+      changed_when: false
+      tags:
+        - cis_1_5_1
+        - aide
+
+    - name: Configure AIDE cron job
+      cron:
+        name: "Daily AIDE integrity check"
+        minute: "0"
+        hour: "5"
+        job: "/usr/sbin/aide --check | mail -s \"AIDE Report\" root@localhost"
+        user: root
+      tags:
+        - cis_1_5_1
+        - aide
+
+    - name: Display AIDE configuration
+      debug:
+        msg: "AIDE configured for daily integrity checking"
+      tags:
+        - aide
+        - always
+
+  tags:
+    - cis_1_5
+    - aide
+
+- name: Summary - Package Management Configuration
+  debug:
+    msg: |
+      =====================================================================
+      Package Management Configuration Summary:
+      =====================================================================
+      ✓ Package manager configured
+      ✓ Repositories configured with GPG keys
+      ✓ Automatic updates configured ({{ cis_package_management.auto_updates_enabled }})
+      ✓ Unnecessary packages removed
+      ✓ Security packages installed
+      ✓ AIDE file integrity checking configured
+      =====================================================================
+  tags:
+    - always
+    - package_management

@@ -1,0 +1,50 @@
+---
+# ==============================================================================
+# Common Role - Handlers
+# ==============================================================================
+
+- name: Reload firewalld
+  service:
+    name: firewalld
+    state: reloaded
+
+- name: Restart firewalld
+  service:
+    name: firewalld
+    state: restarted
+
+- name: Reload sysctl
+  command: sysctl -p
+
+- name: Restart chrony
+  service:
+    name: chronyd
+    state: restarted
+
+# Restart containerd container runtime
+- name: Restart containerd
+  systemd:
+    name: containerd
+    state: restarted
+    daemon_reload: yes
+
+# Restart kubelet
+- name: Restart kubelet
+  systemd:
+    name: kubelet
+    state: restarted
+    daemon_reload: yes
+
+# Restart the system (for major kernel changes)
+- name: Reboot system
+  reboot:
+    msg: "Rebooting system for kernel changes"
+    connect_timeout: 5
+    reboot_timeout: 600
+    pre_reboot_delay: 0
+    post_reboot_delay: 30
+  when: ansible_distribution != "MacOSX"
+
+# Reload sysctl
+- name: Reload sysctl
+  shell: sysctl -p

@@ -1,0 +1,191 @@
+---
+# ==============================================================================
+# Hardware Adjustment Role - Tasks
+# ==============================================================================
+# Adjusts VM hardware (CPU, RAM, Disk) after provisioning
+
+- name: Display hardware adjustment information
+  debug:
+    msg:
+      - "=========================================="
+      - "VM Hardware Configuration"
+      - "=========================================="
+      - "VM Name: {{ vm_name }}"
+      - "Datacenter: {{ datacenter_name }}"
+      - "CPU: {{ vm_cpu_count | default(default_cpu_count) }}"
+      - "Memory: {{ vm_memory_gb | default(default_memory_gb) }} GB"
+      - "=========================================="
+  tags:
+    - day1
+    - provisioning
+    - hardware
+    - always
+
+# ==============================================================================
+# Gather Current VM Information
+# ==============================================================================
+
+- name: Get current VM hardware configuration
+  vmware_guest_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+  delegate_to: localhost
+  register: current_vm_info
+  tags:
+    - day1
+    - provisioning
+    - hardware
+    - info
+
+- name: Display current hardware
+  debug:
+    msg:
+      - "Current Configuration:"
+      - "CPU: {{ current_vm_info.instance.hw_numvcpu }}"
+      - "Memory: {{ current_vm_info.instance.hw_memtotal_mb | int / 1024 | round(1) }} GB"
+  tags:
+    - day1
+    - provisioning
+    - hardware
+    - info
+    - always
+
+# ==============================================================================
+# Adjust CPU
+# ==============================================================================
+
+- name: Adjust CPU count
+  vmware_guest:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    hardware:
+      num_cpus: "{{ vm_cpu_count | default(default_cpu_count) }}"
+      num_cpu_cores_per_socket: "{{ vm_cpu_cores_per_socket | default(1) }}"
+      cpu_hot_add_enabled: "{{ allow_hotplug_cpu }}"
+  delegate_to: localhost
+  when: vm_cpu_count is defined
+  tags:
+    - day1
+    - provisioning
+    - hardware
+    - cpu
+
+# ==============================================================================
+# Adjust Memory
+# ==============================================================================
+
+- name: Adjust memory
+  vmware_guest:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    hardware:
+      memory_mb: "{{ vm_memory_gb | default(default_memory_gb) | int * 1024 }}"
+      memory_hot_add_enabled: "{{ allow_hotplug_memory }}"
+  delegate_to: localhost
+  when: vm_memory_gb is defined
+  tags:
+    - day1
+    - provisioning
+    - hardware
+    - memory
+
+# ==============================================================================
+# Add Additional Disks
+# ==============================================================================
+
+- name: Add additional disk(s)
+  vmware_guest_disk:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    disk:
+      - size_gb: "{{ item.size_gb }}"
+        type: "{{ item.type | default('thin') }}"
+        datastore: "{{ item.datastore | default(omit) }}"
+  loop: "{{ vm_additional_disks | default([]) }}"
+  delegate_to: localhost
+  when: vm_additional_disks is defined
+  tags:
+    - day1
+    - provisioning
+    - hardware
+    - disk
+
+# ==============================================================================
+# Resize Existing Disk
+# ==============================================================================
+
+- name: Resize existing disk
+  vmware_guest_disk:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    disk:
+      - size_gb: "{{ vm_disk_size_gb }}"
+        scsi_controller: "{{ vm_scsi_controller | default(0) }}"
+        unit_number: "{{ vm_unit_number | default(0) }}"
+  delegate_to: localhost
+  when: vm_disk_size_gb is defined
+  tags:
+    - day1
+    - provisioning
+    - hardware
+    - disk-resize
+
+# ==============================================================================
+# Verify Hardware Changes
+# ==============================================================================
+
+- name: Verify hardware configuration after adjustments
+  vmware_guest_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+  delegate_to: localhost
+  register: adjusted_vm_info
+  tags:
+    - day1
+    - provisioning
+    - hardware
+    - verify
+
+- name: Display adjusted hardware
+  debug:
+    msg:
+      - "Updated Configuration:"
+      - "CPU: {{ adjusted_vm_info.instance.hw_numvcpu }}"
+      - "Memory: {{ adjusted_vm_info.instance.hw_memtotal_mb | int / 1024 | round(1) }} GB"
+      - "Disks: {{ adjusted_vm_info.instance.hw_interfaces | length }}"
+  tags:
+    - day1
+    - provisioning
+    - hardware
+    - verify
+    - always

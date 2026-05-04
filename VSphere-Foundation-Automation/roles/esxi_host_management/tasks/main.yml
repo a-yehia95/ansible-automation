@@ -1,0 +1,110 @@
+---
+# ==============================================================================
+# Role: esxi_host_management
+# Description: Add and configure ESXi hosts in vSphere clusters
+# ==============================================================================
+
+- name: Manage ESXi Hosts
+  block:
+    - name: Query existing hosts in cluster
+      vmware.rest.vcenter_host_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+      register: existing_hosts
+      tags:
+        - host_query
+
+    - name: Display existing hosts
+      debug:
+        msg: |
+          Existing ESXi Hosts:
+          {% for host in existing_hosts.value | default([]) %}
+          - {{ host.name }} ({{ host.host }})
+            Connection State: {{ host.connection_state | default('N/A') }}
+            Power State: {{ host.power_state | default('N/A') }}
+          {% endfor %}
+        verbosity: 1
+      tags:
+        - host_query
+        - debug
+
+    - name: Add ESXi host to cluster
+      vmware.rest.vcenter_host:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        hostname: "{{ host.name }}"
+        folder: "{{ host.folder | default(omit) }}"
+        cluster: "{{ host.cluster }}"
+        port: "{{ host.port | default(443) }}"
+        username: "{{ host.username }}"
+        password: "{{ vault_esxi_password }}"
+        force_options: false
+        state: present
+      register: host_result
+      loop: "{{ day0_config.hosts | default([]) }}"
+      loop_control:
+        loop_var: host
+      tags:
+        - host_add
+
+    - name: Display host addition results
+      debug:
+        msg: |
+          Host Addition Results:
+          Hostname: {{ item.result.name | default('N/A') }}
+          Host ID: {{ item.result.host | default('N/A') }}
+          Connection State: {{ item.result.connection_state | default('N/A') }}
+      loop: "{{ host_result.results | default([]) }}"
+      when: host_result.results is defined
+      tags:
+        - host_add
+        - debug
+
+    - name: Configure NTP on ESXi hosts
+      vmware.rest.vcenter_host_ntp:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        host: "{{ host.name }}"
+        servers: "{{ host.ntp_servers | default([]) }}"
+      register: ntp_config
+      loop: "{{ day0_config.hosts | default([]) }}"
+      loop_control:
+        loop_var: host
+      when: host.ntp_servers is defined
+      tags:
+        - host_ntp
+
+    - name: Enter host maintenance mode if needed
+      vmware.rest.vcenter_host_maintenance:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        host: "{{ host.name }}"
+        maintenance_mode: "{{ host.maintenance_mode | default(false) }}"
+      register: maintenance_result
+      loop: "{{ day0_config.hosts | default([]) }}"
+      loop_control:
+        loop_var: host
+      tags:
+        - host_maintenance
+
+  rescue:
+    - name: Handle host management error
+      debug:
+        msg: |
+          Error managing ESXi hosts:
+          {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags:
+        - error_handling
+
+  tags:
+    - esxi_host_management
+    - day0
+    - foundation

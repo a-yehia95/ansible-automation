@@ -1,0 +1,206 @@
+---
+# ==============================================================================
+# Dell PowerStore - Day 2: Operations
+# ==============================================================================
+# Purpose: Manage storage operations (snapshots, expand LUNs)
+#
+# Prerequisites:
+#   - Day 1 provisioning completed
+#   - LUN exists on array
+#
+# Variables Required (via --extra-vars):
+#   - lun_name: Name of LUN to operate on
+#   - operation: "snapshot" or "expand"
+#   - new_size_mb: For expand operation, new size in MB (must be > current)
+#
+# Idempotency:
+#   - Snapshots: Can be created multiple times (new snapshot each time)
+#   - Expand: Idempotent if size same or smaller (no shrink)
+#
+# Execution:
+#   ansible-playbook dell_powerstore/playbooks/day2/operations.yml \
+#     --extra-vars='lun_name=db-lun-01 operation=snapshot'
+# ==============================================================================
+
+- name: Dell PowerStore - Day 2 Operations
+  hosts: dell_powerstore
+  gather_facts: false
+  connection: local
+
+  vars:
+    operation_type: "operations"
+    log_prefix: "[DELL_DAY2]"
+    timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+
+  pre_tasks:
+    - name: Display operation banner
+      debug:
+        msg:
+          - "{{ log_prefix }} Starting Dell PowerStore Operations"
+          - "{{ log_prefix }} Array: {{ inventory_hostname }}"
+          - "{{ log_prefix }} LUN: {{ lun_name | default('NOT SET') }}"
+          - "{{ log_prefix }} Operation: {{ operation | default('NOT SET') }}"
+
+    - name: Validate required variables
+      block:
+        - name: Assert required operation variables
+          assert:
+            that:
+              - lun_name is defined and lun_name | length > 0
+              - operation is defined and operation in ['snapshot', 'expand']
+              - operation != 'expand' or (new_size_mb is defined and new_size_mb | int > 0)
+            fail_msg: |
+              Missing or invalid required variables for Dell PowerStore operations:
+              - lun_name: {{ lun_name | default('UNDEFINED') }}
+              - operation: {{ operation | default('UNDEFINED') }} (must be 'snapshot' or 'expand')
+              - new_size_mb: {{ new_size_mb | default('UNDEFINED') }} (required for expand)
+              
+              Usage examples:
+              # Create snapshot
+              ansible-playbook dell_powerstore/playbooks/day2/operations.yml \
+                --extra-vars='lun_name=db-lun-01 operation=snapshot'
+              
+              # Expand LUN
+              ansible-playbook dell_powerstore/playbooks/day2/operations.yml \
+                --extra-vars='lun_name=db-lun-01 operation=expand new_size_mb=1048576'
+            success_msg: "{{ log_prefix }} All required variables validated"
+
+      rescue:
+        - name: Display validation error
+          debug:
+            msg: "{{ log_prefix }} Validation failed - see error above"
+        - name: Fail playbook
+          fail:
+            msg: "Validation failed - required variables missing or invalid"
+
+  tasks:
+    # =========================================================================
+    # Operation 1: Create Snapshot
+    # =========================================================================
+    - name: Create snapshot of LUN
+      block:
+        - name: Get current LUN information
+          dellemc.powerstore.volume_info:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            volume_name: "{{ lun_name }}"
+          register: lun_info
+          no_log: true
+
+        - name: Verify LUN exists
+          assert:
+            that:
+              - lun_info.volumes is defined
+              - lun_info.volumes | length > 0
+            fail_msg: "{{ log_prefix }} LUN {{ lun_name }} not found on array"
+            success_msg: "{{ log_prefix }} LUN {{ lun_name }} found"
+
+        - name: Extract LUN ID
+          set_fact:
+            lun_id: "{{ lun_info.volumes[0].id }}"
+
+        - name: Create snapshot
+          dellemc.powerstore.snapshot:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            snapshot_name: "{{ lun_name }}-snap-{{ timestamp }}"
+            volume_id: "{{ lun_id }}"
+            description: "{{ powerstore_snapshot_defaults.description }}"
+            state: present
+          register: snapshot_result
+          no_log: true
+          when: operation == 'snapshot'
+
+        - name: Display snapshot creation result
+          debug:
+            msg:
+              - "{{ log_prefix }} ✓ Snapshot created successfully"
+              - "{{ log_prefix }} Snapshot: {{ lun_name }}-snap-{{ timestamp }}"
+              - "{{ log_prefix }} Source LUN: {{ lun_name }}"
+          when:
+            - operation == 'snapshot'
+            - snapshot_result is changed
+
+      rescue:
+        - name: Handle snapshot creation failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to create snapshot for LUN {{ lun_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "Snapshot creation failed"
+      when: operation == 'snapshot'
+
+    # =========================================================================
+    # Operation 2: Expand LUN
+    # =========================================================================
+    - name: Expand LUN to new size
+      block:
+        - name: Get current LUN information
+          dellemc.powerstore.volume_info:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            volume_name: "{{ lun_name }}"
+          register: lun_info
+          no_log: true
+
+        - name: Calculate current size in MB
+          set_fact:
+            current_size_mb: "{{ lun_info.volumes[0].size }}"
+
+        - name: Verify expansion is valid
+          assert:
+            that:
+              - new_size_mb | int > current_size_mb | int
+            fail_msg: "{{ log_prefix }} New size ({{ new_size_mb }}MB) must be larger than current size ({{ current_size_mb }}MB)"
+            success_msg: "{{ log_prefix }} Expansion valid: {{ current_size_mb }}MB → {{ new_size_mb }}MB"
+
+        - name: Expand LUN
+          dellemc.powerstore.volume:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            vol_name: "{{ lun_name }}"
+            new_size: "{{ new_size_mb }}"
+            size_unit: "MB"
+            state: present
+          register: expand_result
+          no_log: true
+
+        - name: Display LUN expansion result
+          debug:
+            msg:
+              - "{{ log_prefix }} ✓ LUN expanded successfully"
+              - "{{ log_prefix }} LUN: {{ lun_name }}"
+              - "{{ log_prefix }} Previous size: {{ current_size_mb }}MB"
+              - "{{ log_prefix }} New size: {{ new_size_mb }}MB"
+          when: expand_result is changed
+
+        - name: Display no change notice
+          debug:
+            msg: "{{ log_prefix }} LUN {{ lun_name }} already at size {{ new_size_mb }}MB"
+          when: expand_result is not changed
+
+      rescue:
+        - name: Handle LUN expansion failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to expand LUN {{ lun_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "LUN expansion failed"
+      when: operation == 'expand'
+
+  post_tasks:
+    - name: Display operation completion
+      debug:
+        msg:
+          - "{{ log_prefix }} ✓ Operation completed successfully"
+          - "{{ log_prefix }} LUN: {{ lun_name }}"
+          - "{{ log_prefix }} Operation: {{ operation }}"
+          - "{{ log_prefix }} Timestamp: {{ timestamp }}"

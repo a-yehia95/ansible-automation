@@ -1,0 +1,28 @@
+---
+# ==============================================================================
+# Storage Automation - Vault Template
+# ==============================================================================
+# IMPORTANT: DO NOT COMMIT THIS FILE TO VERSION CONTROL
+# Create this file with ansible-vault create and populate with real credentials
+#
+# Usage:
+#   ansible-vault create group_vars/vault.yml
+#   (paste contents below and edit with real values)
+#
+# Then reference in playbooks:
+#   pure_api_token: "{{ vault_pure_api_token }}"
+#   powerstore_rest_api_username: "{{ vault_powerstore_username }}"
+# ==============================================================================
+
+# Pure Storage FlashArray Credentials
+vault_pure_api_token: "YOUR_PURE_API_TOKEN_HERE"
+
+# Dell PowerStore Credentials
+vault_powerstore_username: "YOUR_POWERSTORE_USERNAME_HERE"
+vault_powerstore_password: "YOUR_POWERSTORE_PASSWORD_HERE"
+
+# Optional: NTP/DNS Settings
+vault_ntp_server: "time.example.com"
+vault_dns_servers:
+  - "8.8.8.8"
+  - "8.8.4.4"

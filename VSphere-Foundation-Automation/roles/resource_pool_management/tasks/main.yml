@@ -1,0 +1,79 @@
+---
+# ==============================================================================
+# Role: resource_pool_management
+# Description: Create and manage vSphere resource pools
+# ==============================================================================
+
+- name: Manage Resource Pools
+  block:
+    - name: Query existing resource pools
+      vmware.rest.vcenter_resource_pool_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+      register: existing_resource_pools
+      tags:
+        - resource_pool_query
+
+    - name: Display existing resource pools
+      debug:
+        msg: |
+          Existing Resource Pools:
+          {% for rp in existing_resource_pools.value | default([]) %}
+          - {{ rp.name }}
+            CPU Shares: {{ rp.cpu_shares | default('N/A') }}
+            Memory Shares: {{ rp.memory_shares | default('N/A') }}
+          {% endfor %}
+        verbosity: 1
+      tags:
+        - resource_pool_query
+        - debug
+
+    - name: Create resource pool
+      vmware.rest.vcenter_resource_pool_create:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        name: "{{ rp.name }}"
+        cluster: "{{ rp.cluster }}"
+        cpu_shares: "{{ rp.cpu_shares | default(4000) }}"
+        cpu_limit: "{{ rp.cpu_limit | default(-1) }}"
+        cpu_reservation: "{{ rp.cpu_reservation | default(0) }}"
+        memory_shares: "{{ rp.memory_shares | default(4000) }}"
+        memory_limit: "{{ rp.memory_limit | default(-1) }}"
+        memory_reservation: "{{ rp.memory_reservation | default(0) }}"
+        state: present
+      register: resource_pool_result
+      loop: "{{ day0_config.resource_pools | default([]) }}"
+      loop_control:
+        loop_var: rp
+      tags:
+        - resource_pool_create
+
+    - name: Display resource pool creation results
+      debug:
+        msg: |
+          Resource Pool Creation Results:
+          Name: {{ item.result.name | default('N/A') }}
+          ID: {{ item.result.resource_pool | default('N/A') }}
+      loop: "{{ resource_pool_result.results | default([]) }}"
+      when: resource_pool_result.results is defined
+      tags:
+        - resource_pool_create
+        - debug
+
+  rescue:
+    - name: Handle resource pool management error
+      debug:
+        msg: |
+          Error managing resource pools:
+          {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags:
+        - error_handling
+
+  tags:
+    - resource_pool_management
+    - day1
+    - provisioning

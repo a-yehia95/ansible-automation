@@ -1,0 +1,10 @@
+---
+# ==============================================================================
+# Role: datastore_management - Defaults
+# ==============================================================================
+
+datastore_state: "present"
+datastore_nfs_version: "nfs41"
+datastore_vmfs_version: 6
+datastore_type: "vmfs"  # vmfs or nfs
+datastore_management_enabled: true

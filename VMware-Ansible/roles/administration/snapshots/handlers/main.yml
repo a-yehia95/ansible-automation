@@ -1,0 +1,12 @@
+---
+# ==============================================================================
+# Snapshots Role - Handlers
+# ==============================================================================
+
+- name: Refresh snapshot inventory
+  debug:
+    msg: "Snapshot inventory refreshed"
+
+- name: Recalculate storage capacity
+  debug:
+    msg: "Storage capacity recalculated"

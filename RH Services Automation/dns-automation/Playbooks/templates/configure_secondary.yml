@@ -1,0 +1,50 @@
+---
+- name: Configure secondary nameserver
+  hosts: secondary_dns
+  remote_user: devops
+  become: true
+
+  tasks:
+    - name: Install BIND9
+      ansible.builtin.dnf:
+        name: bind
+        state: present
+
+    - name: Copy secondary config file
+      ansible.builtin.copy:
+        src: files/secondary-named.conf
+        dest: /etc/named.conf
+        owner: root
+        group: named
+        mode: 0640
+      notify:
+        - reload_named
+
+    - name: Copy backend config file (for zones)
+      ansible.builtin.copy:
+        src: files/secondary-named.backend.conf
+        dest: /etc/named.backend.conf
+        owner: root
+        group: named
+        mode: 0640
+      notify:
+        - reload_named
+
+    - name: Allow dns service on firewall
+      ansible.posix.firewalld:
+        service: dns
+        state: enabled
+        immediate: true
+        permanent: true
+
+    - name: Ensure named is running and enabled
+      ansible.builtin.service:
+        name: named
+        state: started
+        enabled: true
+
+  handlers:
+    - name: reload_named
+      ansible.builtin.service:
+        name: named
+        state: reloaded

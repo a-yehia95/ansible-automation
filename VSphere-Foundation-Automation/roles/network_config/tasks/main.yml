@@ -1,0 +1,109 @@
+---
+# ==============================================================================
+# Role: network_config
+# Description: Configure distributed virtual switches and port groups
+# ==============================================================================
+
+- name: Configure VMware Networking
+  block:
+    - name: Query existing virtual distributed switches
+      vmware.rest.vcenter_vds_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+      register: existing_vds
+      tags:
+        - vds_query
+
+    - name: Display existing vDS
+      debug:
+        msg: |
+          Existing vDistributed Switches:
+          {% for vds in existing_vds.value | default([]) %}
+          - {{ vds.name }} (Version: {{ vds.version | default('N/A') }})
+          {% endfor %}
+        verbosity: 1
+      tags:
+        - vds_query
+        - debug
+
+    - name: Create distributed virtual switch
+      vmware.rest.vcenter_vds_create:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        name: "{{ vds.name }}"
+        datacenter: "{{ vds.datacenter }}"
+        version: "{{ vds.version | default('7.0.0') }}"
+        mtu: "{{ vds.mtu | default(1500) }}"
+        state: present
+      register: vds_create_result
+      loop: "{{ networking.vds | default([]) }}"
+      loop_control:
+        loop_var: vds
+      tags:
+        - vds_create
+
+    - name: Create port groups on vDS
+      vmware.rest.vcenter_vds_portgroup_create:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        name: "{{ pg.name }}"
+        vds: "{{ parent_vds.name }}"
+        vlan_id: "{{ pg.vlan_id | default(0) }}"
+        type: "{{ pg.type | default('earlyBinding') }}"
+        num_ports: "{{ pg.num_ports | default(128) }}"
+      register: pg_create_result
+      loop: "{{ networking.vds | default([]) | subelements('portgroups', skip_missing=True) }}"
+      loop_control:
+        loop_var: pg
+        index_var: pg_idx
+      vars:
+        parent_vds: "{{ networking.vds | default([]) | selectattr('name', 'equalto', pg.vds | default('')) | first }}"
+      tags:
+        - portgroup_create
+
+    - name: Add ESXi hosts to vDS
+      vmware.rest.vcenter_vds_host_member_add:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vds: "{{ vds.name }}"
+        host: "{{ host_name }}"
+      register: vds_host_member
+      loop: "{{ networking.vds | default([]) }}"
+      loop_control:
+        loop_var: vds
+      vars:
+        hosts_from_day0: "{{ day0_config.hosts | default([]) | map(attribute='name') | list }}"
+      tags:
+        - vds_hosts
+
+    - name: Display network configuration results
+      debug:
+        msg: |
+          Network Configuration Results:
+          vDS Created: {{ vds_create_result.results | default([]) | length }}
+          Port Groups Created: {{ pg_create_result.results | default([]) | length }}
+        verbosity: 0
+      tags:
+        - network_summary
+
+  rescue:
+    - name: Handle network configuration error
+      debug:
+        msg: |
+          Error configuring network:
+          {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags:
+        - error_handling
+
+  tags:
+    - network_config
+    - day1
+    - provisioning

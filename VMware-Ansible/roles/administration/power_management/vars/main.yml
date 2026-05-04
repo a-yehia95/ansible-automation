@@ -1,0 +1,9 @@
+---
+# ==============================================================================
+# Power Management Role - Vars
+# ==============================================================================
+
+power_state: "powered_on"  # Options: powered_on, powered_off, restarted
+force_shutdown: false
+wait_for_state_change: true
+state_change_timeout: 300

@@ -1,0 +1,73 @@
+---
+# ==============================================================================
+# DAY 0 Playbook - Foundation Operations
+# ==============================================================================
+# Purpose: Create foundation infrastructure for vSphere environment
+# Usage: ansible-playbook playbooks/day0/foundation.yml
+
+- name: Day 0 - Foundation Operations
+  hosts: day0_operations
+  gather_facts: no
+  connection: local
+
+  pre_tasks:
+    - name: Display Day 0 execution context
+      debug:
+        msg: |
+          =====================================================================
+          Day 0 - vSphere Foundation Operations
+          =====================================================================
+          Datacenter: {{ datacenter_name }}
+          Cluster: {{ cluster_name }}
+          Operations:
+            - Datacenter Creation
+            - Cluster Configuration (HA/DRS)
+            - ESXi Host Addition
+            - Datastore Management
+          =====================================================================
+      tags:
+        - always
+        - info
+
+  roles:
+    - role: vcenter_init
+      tags:
+        - always
+        - init
+
+    - role: datacenter_config
+      tags:
+        - day0
+        - foundation
+
+    - role: cluster_management
+      tags:
+        - day0
+        - foundation
+
+    - role: esxi_host_management
+      tags:
+        - day0
+        - foundation
+
+    - role: datastore_management
+      tags:
+        - day0
+        - foundation
+
+  post_tasks:
+    - name: Day 0 completion summary
+      debug:
+        msg: |
+          =====================================================================
+          Day 0 Foundation Operations - Complete
+          =====================================================================
+          Infrastructure Status:
+            - Datacenter: CONFIGURED
+            - Cluster: CONFIGURED (HA/DRS enabled)
+            - ESXi Hosts: ADDED
+            - Datastores: MOUNTED
+          =====================================================================
+      tags:
+        - always
+        - summary

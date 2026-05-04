@@ -1,0 +1,78 @@
+---
+# ==============================================================================
+# Datacenter Role - Tasks
+# ==============================================================================
+# Manages VMware vSphere datacenters
+
+- name: Display datacenter management information
+  debug:
+    msg:
+      - "=========================================="
+      - "Datacenter Management"
+      - "=========================================="
+      - "vCenter: {{ vcenter_hostname }}"
+      - "State: {{ datacenter_state }}"
+      - "Datacenters: {{ datacenters | length }}"
+      - "=========================================="
+  tags:
+    - day0
+    - datacenter
+    - always
+
+# ==============================================================================
+# Create/Manage Datacenters
+# ==============================================================================
+
+- name: Create datacenters in vCenter
+  vmware_datacenter:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    datacenter_name: "{{ item.name }}"
+    description: "{{ item.description | default('') }}"
+    state: "{{ datacenter_state }}"
+  loop: "{{ datacenters }}"
+  delegate_to: localhost
+  tags:
+    - day0
+    - datacenter
+    - create
+
+- name: Gather datacenter facts
+  vmware_datacenter_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+  delegate_to: localhost
+  register: datacenter_info
+  tags:
+    - day0
+    - datacenter
+    - info
+
+- name: Display datacenter information
+  debug:
+    msg:
+      - "Datacenters in vCenter:"
+      - "{{ datacenter_info.datacenter_info | to_nice_json }}"
+  tags:
+    - day0
+    - datacenter
+    - info
+    - always
+
+- name: Verify datacenter creation
+  assert:
+    that:
+      - datacenter_info.datacenter_info is defined
+      - datacenter_info.datacenter_info | length > 0
+    fail_msg: "No datacenters found in vCenter"
+    success_msg: "Datacenters successfully created/verified"
+  tags:
+    - day0
+    - datacenter
+    - verify

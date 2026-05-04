@@ -1,0 +1,167 @@
+---
+# ============================================================================
+# MASTER PLAYBOOK - Cisco Infrastructure as Code Orchestration
+# ============================================================================
+# This master playbook orchestrates the complete lifecycle management
+# of Cisco IOS devices and Firepower appliances
+#
+# Execution Modes:
+#   Day 0: ansible-playbook site.yml --tags day0
+#   Day 1: ansible-playbook site.yml --tags day1
+#   Day 2: ansible-playbook site.yml --tags day2
+#   Full:  ansible-playbook site.yml
+#   Drift: ansible-playbook site.yml --tags day2,validation,drift_detection
+
+- name: "DAY 0: PROVISIONING - Cisco Network Infrastructure"
+  hosts: ios_devices
+  gather_facts: false
+  connection: network_cli
+
+  pre_tasks:
+    - name: Display playbook start message
+      debug:
+        msg: |
+          ========================================
+          Starting Day 0 Provisioning
+          ========================================
+          Target hosts: {{ play_hosts }}
+          Start time: {{ ansible_date_time.iso8601 }}
+
+  roles:
+    - role: common
+      tags:
+        - day0
+        - always
+
+  post_tasks:
+    - name: Day 0 completion report
+      debug:
+        msg: |
+          ========================================
+          DAY 0 PROVISIONING COMPLETE
+          ========================================
+          Device: {{ inventory_hostname }}
+          Hostname: {{ hostname }}
+          Status: PROVISIONED
+          Time: {{ ansible_date_time.iso8601 }}
+
+---
+
+- name: "DAY 1: DEPLOYMENT - IOS Configuration"
+  hosts: ios_devices
+  gather_facts: false
+  connection: network_cli
+
+  pre_tasks:
+    - name: Pre-deployment validation
+      debug:
+        msg: "Starting Day 1 deployment for {{ inventory_hostname }}"
+
+  roles:
+    - role: ios_config
+      tags:
+        - day1
+        - ios
+        - deployment
+
+  post_tasks:
+    - name: Verify configuration deployment
+      debug:
+        msg: "Day 1 IOS configuration completed for {{ inventory_hostname }}"
+
+---
+
+- name: "DAY 1: DEPLOYMENT - Firepower Security Configuration"
+  hosts: fmc_devices
+  gather_facts: false
+  connection: network_cli
+
+  pre_tasks:
+    - name: Pre-deployment FMC validation
+      debug:
+        msg: "Starting FMC security deployment for {{ inventory_hostname }}"
+
+  roles:
+    - role: fmc_security
+      tags:
+        - day1
+        - firepower
+        - deployment
+
+  post_tasks:
+    - name: FMC deployment verification
+      debug:
+        msg: "Day 1 Firepower configuration completed for {{ inventory_hostname }}"
+
+---
+
+- name: "DAY 2: OPERATIONS - Network Validation & Health Checks"
+  hosts: ios_devices
+  gather_facts: false
+  connection: network_cli
+
+  roles:
+    - role: validation
+      tags:
+        - day2
+        - validation
+        - operations
+
+---
+
+- name: "DAY 2: OPERATIONS - Automated Configuration Backup"
+  hosts: cisco
+  gather_facts: false
+  connection: network_cli
+
+  roles:
+    - role: backup
+      tags:
+        - day2
+        - backup
+        - operations
+
+---
+
+- name: "MAINTENANCE: OS Upgrade & Maintenance"
+  hosts: ios_devices
+  gather_facts: false
+  connection: network_cli
+  serial: 1  # Execute one device at a time
+
+  roles:
+    - role: maintenance
+      tags:
+        - maintenance
+        - upgrade
+  when: perform_os_upgrade | default(false) | bool
+
+---
+
+# Final comprehensive report
+- name: "REPORTING - Generate Comprehensive Report"
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Generate execution summary
+      template:
+        src: execution_summary.j2
+        dest: "./logs/execution_summary_{{ ansible_date_time.iso8601 }}.html"
+      tags:
+        - reporting
+        - always
+
+    - name: Final execution status
+      debug:
+        msg: |
+          ========================================
+          ANSIBLE PLAYBOOK EXECUTION COMPLETE
+          ========================================
+          Duration: {{ ansible_runtime }}
+          Status: SUCCESS
+          Report: ./logs/execution_summary_{{ ansible_date_time.iso8601 }}.html
+          ========================================
+      tags:
+        - reporting
+        - always

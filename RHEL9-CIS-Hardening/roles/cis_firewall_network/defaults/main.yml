@@ -1,0 +1,32 @@
+---
+# ==============================================================================
+# Role: cis_firewall_network - Default Variables
+# ==============================================================================
+
+cis_firewall_network:
+  # Firewall Service
+  firewall_service: firewalld
+  firewall_enabled: true
+  firewall_startup_enabled: true
+  
+  # Default zone
+  default_zone: public
+  
+  # Network parameters
+  ipv4_forwarding_enabled: false
+  ipv6_forwarding_enabled: false
+  ipv4_send_redirects_enabled: false
+  ipv4_accept_redirects_enabled: false
+  ipv6_accept_redirects_enabled: false
+  ipv4_ignore_bogus_error_responses: true
+  ipv4_tcp_syncookies_enabled: true
+  ipv6_ra_enabled: false
+  
+  # Network ACL
+  configure_network_acl: false
+  
+  # SSH Port
+  ssh_port: 22
+  ssh_firewall_allowed_from: []
+
+enable_firewall_network: true

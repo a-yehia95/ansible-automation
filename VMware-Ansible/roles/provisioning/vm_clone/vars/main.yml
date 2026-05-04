@@ -1,0 +1,9 @@
+---
+# ==============================================================================
+# VM Clone Role - Vars
+# ==============================================================================
+
+clone_state: "present"  # Options: present, absent
+wait_for_ip_address: true
+ip_address_timeout: 600  # seconds
+snapshot_after_clone: false

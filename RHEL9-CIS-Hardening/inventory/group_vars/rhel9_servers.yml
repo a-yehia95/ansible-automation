@@ -1,0 +1,306 @@
+---
+# ==============================================================================
+# Group Variables - All RHEL 9 Servers (CIS Hardening)
+# ==============================================================================
+# Location: inventory/group_vars/rhel9_servers.yml
+
+# Operating System
+os_family: RedHat
+os_distribution: RHEL
+os_version_min: 9.0
+os_version_max: 9.9
+
+# CIS Benchmark Configuration
+cis_version: "1.0.0"
+cis_profile: "level1"  # level1 or level2 (can be overridden per host)
+
+# Enable/Disable major hardening areas
+enable_account_policies: true
+enable_file_permissions: true
+enable_logging_auditing: true
+enable_firewall_network: true
+enable_package_management: true
+enable_system_settings: true
+enable_authentication: true
+enable_services: true
+
+# General Settings
+ntp_servers:
+  - 0.rhel.pool.ntp.org
+  - 1.rhel.pool.ntp.org
+  - 2.rhel.pool.ntp.org
+
+syslog_server: ""  # Optional: remote syslog server
+syslog_port: 514
+
+# ============================================================
+# 1. ACCOUNT POLICIES & ACCESS CONTROL
+# ============================================================
+cis_account_policies:
+  # Password Policy
+  password_max_days: 90
+  password_min_days: 1
+  password_min_length: 14
+  password_warn_age: 14
+  password_max_retry: 3
+  password_fail_delay: 4
+  
+  # Session Timeout
+  session_timeout_seconds: 900
+  
+  # Lock Policies
+  account_lock_threshold: 5
+  account_lock_duration: 900  # 15 minutes
+  
+  # Root Login
+  permit_root_login: "without-password"
+  permit_empty_password: false
+  
+  # Sudo Configuration
+  sudo_use_pty: true
+  sudo_log_file: "/var/log/sudo.log"
+  sudo_require_password_restart: true
+  
+  # User/Group Settings
+  umask_default: "0077"
+  umask_shell: "0077"
+  default_gid: 1000
+
+# ============================================================
+# 2. FILE PERMISSIONS & OWNERSHIP
+# ============================================================
+cis_file_permissions:
+  # System file permissions to enforce
+  files_to_check:
+    - path: /etc/passwd
+      owner: root
+      group: root
+      mode: "0644"
+    - path: /etc/shadow
+      owner: root
+      group: root
+      mode: "0600"
+    - path: /etc/group
+      owner: root
+      group: root
+      mode: "0644"
+    - path: /etc/gshadow
+      owner: root
+      group: root
+      mode: "0600"
+    - path: /etc/ssh/sshd_config
+      owner: root
+      group: root
+      mode: "0600"
+    - path: /etc/sudoers
+      owner: root
+      group: root
+      mode: "0440"
+  
+  # World-writable directories to check
+  check_world_writable: true
+  
+  # Unowned files check
+  check_unowned_files: true
+  
+  # SUID/SGID/Sticky bit checks
+  check_suid_sgid: true
+
+# ============================================================
+# 3. LOGGING & AUDITING
+# ============================================================
+cis_logging_auditing:
+  # Auditd Configuration
+  auditd_enabled: true
+  auditd_buffer_size: 8192
+  
+  # Audit Rules (critical operations to track)
+  audit_rules:
+    - "-a exit,always -F arch=b64 -S adjtimex -S settimeofday -k time-change"
+    - "-a exit,always -F arch=b32 -S adjtimex -S settimeofday -S stime -k time-change"
+    - "-a exit,always -F arch=b64 -S clock_settime -k time-change"
+    - "-a exit,always -F arch=b32 -S clock_settime -k time-change"
+    - "-w /etc/localtime -p wa -k time-change"
+    - "-w /etc/group -p wa -k identity"
+    - "-w /etc/passwd -p wa -k identity"
+    - "-w /etc/gshadow -p wa -k identity"
+    - "-w /etc/shadow -p wa -k identity"
+    - "-w /etc/security/opasswd -p wa -k identity"
+  
+  # Rsyslog Configuration
+  rsyslog_enabled: true
+  rsyslog_log_files_mode: "0640"
+  rsyslog_log_files_owner: "root"
+  rsyslog_log_files_group: "adm"
+  
+  # Log retention
+  log_retention_days: 30
+  archived_logs_retention_days: 90
+
+# ============================================================
+# 4. FIREWALL & NETWORK SECURITY
+# ============================================================
+cis_firewall_network:
+  # Firewall Service
+  firewall_service: firewalld  # or ufw
+  firewall_enabled: true
+  firewall_startup_enabled: true
+  
+  # Default zone
+  default_zone: public
+  
+  # Network parameters
+  ipv4_forwarding_enabled: false
+  ipv6_forwarding_enabled: false
+  ipv4_send_redirects_enabled: false
+  ipv4_accept_redirects_enabled: false
+  ipv6_accept_redirects_enabled: false
+  ipv4_ignore_bogus_error_responses: true
+  ipv4_tcp_syncookies_enabled: true
+  ipv6_ra_enabled: false  # Disable RA unless needed
+  
+  # Network ACL
+  configure_network_acl: false
+  
+  # SSH Listening Port
+  ssh_port: 22
+  ssh_firewall_allowed_from: []  # Empty = allow all (restrict in real deployments)
+
+# ============================================================
+# 5. PACKAGE MANAGEMENT
+# ============================================================
+cis_package_management:
+  # Package manager
+  package_manager: dnf
+  
+  # Update policy
+  auto_updates_enabled: true
+  auto_updates_method: "auto"  # auto, download, install
+  
+  # Unneeded packages to remove
+  packages_to_remove:
+    - xserver-xorg*
+    - avahi-daemon
+    - dhcp
+    - bind
+    - vsftpd
+    - httpd
+    - dovecot
+    - samba
+    - snmpd
+  
+  # Required packages to ensure installed
+  packages_to_install:
+    - aide
+    - aide-lib
+    - aide-devel
+    - rsyslog
+    - cronie
+    - firewalld
+    - cryptsetup
+
+# ============================================================
+# 6. SYSTEM SETTINGS & KERNEL PARAMETERS
+# ============================================================
+cis_system_settings:
+  # Boot Loader
+  bootloader_password_hashed: false  # Set to true if you want to enable GRUB password
+  
+  # Kernel Parameters
+  kernel_params:
+    kernel.randomize_va_space: 2
+    kernel.yama.ptrace_scope: 2
+    kernel.kptr_restrict: 1
+    kernel.dmesg_restrict: 1
+    kernel.printk: "3 3 3 3"
+    kernel.unprivileged_bpf_disabled: 1
+    kernel.unprivileged_userns_clone: 0
+    net.ipv4.conf.all.arp_ignore: 1
+    net.ipv4.conf.default.arp_ignore: 1
+  
+  # Core Dumps
+  core_dumps_restricted: true
+  
+  # Uncompress (optional but can speed up boot)
+  uncompress_modules: false
+  
+  # SELinux Configuration
+  selinux_enabled: true
+  selinux_policy: targeted
+  selinux_mode: enforcing
+
+# ============================================================
+# 7. AUTHENTICATION & ACCESS
+# ============================================================
+cis_authentication:
+  # SSH Configuration
+  ssh_config:
+    port: 22
+    protocol_version: 2
+    permit_root_login: "without-password"
+    pubkey_authentication: "yes"
+    password_authentication: "no"
+    permit_empty_password: "no"
+    x11_forwarding: "no"
+    maxauthtries: 3
+    maxsessions: 5
+    clientaliveinterval: 300
+    clientalivecount: 2
+    compression: "no"
+    hostbasedauthentication: "no"
+    kbdinteractiveauthentication: "no"
+    gssapiauthentication: "no"
+    usepam: "yes"
+    permituserenvironment: "no"
+    authenticationmechanisms: pam
+  
+  # PAM Configuration
+  pam_config:
+    password_history: 5  # Remember last N passwords
+    password_min_class: 1  # Minimum password complexity
+    pam_faillock_enabled: true
+  
+  # SSH Key Configuration
+  ssh_key_bits: 4096
+  ssh_strong_ciphers: true
+
+# ============================================================
+# 8. SERVICES TO DISABLE
+# ============================================================
+cis_services:
+  # Services to disable (unless needed)
+  services_to_disable:
+    - avahi-daemon
+    - cups
+    - isc-dhcp-server
+    - isc-dhcp-server6
+    - bind
+    - vsftpd
+    - httpd
+    - dovecot
+    - samba
+    - snmpd
+    - rsync
+    - nis
+  
+  # Services to enable
+  services_to_enable:
+    - auditd
+    - firewalld
+    - crond
+    - rsyslog
+    - ntpd
+
+# ============================================================
+# TESTING & VALIDATION
+# ============================================================
+# Enable CIS compliance checks
+cis_compliance_check: true
+
+# Generate detailed audit report
+generate_audit_report: true
+report_output_dir: "./reports"
+
+# Rollback configuration
+enable_pre_backup: true
+backup_dir: "/var/backups/cis_hardening"

@@ -1,0 +1,67 @@
+# Git ignore rules for Cisco Automation Framework
+
+# Sensitive credentials
+.vault_pass
+.vault_pass.txt
+*.vault
+group_vars/**/vault.yml
+group_vars/**/*vault*
+!group_vars/**/vault_template.yml
+
+# Logs and outputs
+logs/*.log
+*.log
+
+# Cache and runtime files
+.cache/
+*.pyc
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.vscode/
+
+# Ansible temporary files
+*.retry
+.ansible/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+.project
+.pydevproject
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Output artifacts
+*.tar.gz
+*.zip
+
+# Backups (keep in backups folder, not version control)
+backups/PRE_*.cfg
+backups/PRE_*.txt
+backups/*_backup_*.cfg
+backups/drift_report_*.txt
+
+# Sensitive data
+host_vars/*/sensitive.yml
+group_vars/*/secrets.yml
+
+# Reports (can be regenerated)
+reports/*.html
+facts/*.json
+
+# Session files
+session.*
+*.session

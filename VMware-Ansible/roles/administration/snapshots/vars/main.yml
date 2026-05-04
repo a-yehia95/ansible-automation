@@ -1,0 +1,8 @@
+---
+# ==============================================================================
+# Snapshots Role - Vars
+# ==============================================================================
+
+snapshot_state: "present"  # Options: present, absent, revert
+snapshot_memory: true
+snapshot_quiesce: true

@@ -1,0 +1,437 @@
+---
+# ==============================================================================
+# ETCD Role Tasks: Distributed Key-Value Store
+# ==============================================================================
+# This role sets up etcd cluster which is the backing store for Kubernetes
+# All cluster data is stored in etcd
+
+# ==============================================================================
+# SECTION 1: Generate ETCD Certificates
+# ==============================================================================
+
+- name: Create temporary certificate directory
+  file:
+    path: /tmp/etcd-certs
+    state: directory
+    mode: '0700'
+  tags:
+    - etcd-certs
+
+# ==============================================================================
+# SECTION 2: Download and Install ETCD
+# ==============================================================================
+
+- name: Check if etcd is already installed
+  stat:
+    path: /usr/local/bin/etcd
+  register: etcd_binary
+  tags:
+    - etcd-install
+
+- name: Download etcd binary
+  get_url:
+    url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version | default('3.5.9') }}/etcd-v{{ etcd_version | default('3.5.9') }}-linux-{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}.tar.gz"
+    dest: /tmp/etcd.tar.gz
+    timeout: 60
+  when: not etcd_binary.stat.exists
+  tags:
+    - etcd-install
+    - download
+
+- name: Extract etcd binary
+  unarchive:
+    src: /tmp/etcd.tar.gz
+    dest: /tmp
+    remote_src: yes
+  when: not etcd_binary.stat.exists
+  tags:
+    - etcd-install
+    - extract
+
+- name: Install etcd binaries
+  shell: |
+    cp /tmp/etcd-v*/etcd /usr/local/bin/
+    cp /tmp/etcd-v*/etcdctl /usr/local/bin/
+    chmod +x /usr/local/bin/etcd*
+  when: not etcd_binary.stat.exists
+  tags:
+    - etcd-install
+
+- name: Verify etcd installation
+  shell: etcd --version
+  register: etcd_version_check
+  changed_when: false
+  tags:
+    - etcd-install
+    - verify
+
+- name: Display etcd version
+  debug:
+    msg: "{{ etcd_version_check.stdout }}"
+  tags:
+    - etcd-install
+    - verify
+
+# ==============================================================================
+# SECTION 3: Create ETCD User and Directories
+# ==============================================================================
+
+- name: Create etcd user
+  user:
+    name: etcd
+    shell: /usr/sbin/nologin
+    system: yes
+    state: present
+  tags:
+    - etcd-user
+
+- name: Create etcd directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: etcd
+    group: etcd
+    mode: '0700'
+  loop:
+    - /var/lib/etcd
+    - /etc/etcd
+    - /etc/kubernetes/pki/etcd
+  tags:
+    - etcd-dirs
+
+# ==============================================================================
+# SECTION 4: Generate ETCD Certificates (CA, Server, Client, Peer)
+# ==============================================================================
+
+- name: Generate etcd CA private key
+  openssl_privatekey:
+    path: "{{ etcd_cert_path }}/ca-key.pem"
+    size: 2048
+    type: RSA
+    owner: etcd
+    group: etcd
+    mode: '0600'
+  when: inventory_hostname == groups['etcd'][0]  # Only generate on first etcd node
+  tags:
+    - etcd-certs
+    - ca
+
+- name: Generate etcd CA certificate
+  openssl_certificate:
+    path: "{{ etcd_cert_path }}/ca.pem"
+    privatekey_path: "{{ etcd_cert_path }}/ca-key.pem"
+    csr_path: "{{ etcd_cert_path }}/ca.csr"
+    provider: selfsigned
+    selfsigned_version: 3
+    owner: etcd
+    group: etcd
+    mode: '0644'
+  when: inventory_hostname == groups['etcd'][0]
+  tags:
+    - etcd-certs
+    - ca
+
+- name: Fetch CA certificate
+  fetch:
+    src: "{{ etcd_cert_path }}/ca.pem"
+    dest: "/tmp/etcd-ca.pem"
+    flat: yes
+  when: inventory_hostname == groups['etcd'][0]
+  tags:
+    - etcd-certs
+    - ca
+
+- name: Fetch CA key
+  fetch:
+    src: "{{ etcd_cert_path }}/ca-key.pem"
+    dest: "/tmp/etcd-ca-key.pem"
+    flat: yes
+  when: inventory_hostname == groups['etcd'][0]
+  tags:
+    - etcd-certs
+    - ca
+
+- name: Copy CA certificate to all etcd nodes
+  copy:
+    src: "/tmp/etcd-ca.pem"
+    dest: "{{ etcd_cert_path }}/ca.pem"
+    owner: etcd
+    group: etcd
+    mode: '0644'
+  when: inventory_hostname != groups['etcd'][0]
+  tags:
+    - etcd-certs
+    - ca
+
+- name: Copy CA key to all etcd nodes
+  copy:
+    src: "/tmp/etcd-ca-key.pem"
+    dest: "{{ etcd_cert_path }}/ca-key.pem"
+    owner: etcd
+    group: etcd
+    mode: '0600'
+  when: inventory_hostname != groups['etcd'][0]
+  tags:
+    - etcd-certs
+    - ca
+
+# Generate server certificate for this etcd node
+- name: Generate etcd server private key
+  openssl_privatekey:
+    path: "{{ etcd_cert_path }}/server-key.pem"
+    size: 2048
+    type: RSA
+    owner: etcd
+    group: etcd
+    mode: '0600'
+  tags:
+    - etcd-certs
+    - server-cert
+
+- name: Generate etcd server CSR
+  openssl_csr:
+    path: "{{ etcd_cert_path }}/server.csr"
+    privatekey_path: "{{ etcd_cert_path }}/server-key.pem"
+    subject_alt_name: "DNS:{{ inventory_hostname }},DNS:localhost,DNS:{{ ansible_hostname }},IP:{{ ansible_default_ipv4.address }},IP:127.0.0.1"
+    common_name: "{{ inventory_hostname }}"
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    extended_key_usage:
+      - serverAuth
+  tags:
+    - etcd-certs
+    - server-cert
+
+- name: Generate etcd server certificate
+  openssl_certificate:
+    path: "{{ etcd_cert_path }}/server.pem"
+    csr_path: "{{ etcd_cert_path }}/server.csr"
+    ownca_path: "{{ etcd_cert_path }}/ca.pem"
+    ownca_privatekey_path: "{{ etcd_cert_path }}/ca-key.pem"
+    provider: ownca
+    owner: etcd
+    group: etcd
+    mode: '0644'
+  tags:
+    - etcd-certs
+    - server-cert
+
+# ==============================================================================
+# SECTION 5: Generate ETCD Client Certificates
+# ==============================================================================
+
+- name: Generate etcd client private key
+  openssl_privatekey:
+    path: "{{ etcd_cert_path }}/client-key.pem"
+    size: 2048
+    type: RSA
+    owner: etcd
+    group: etcd
+    mode: '0600'
+  tags:
+    - etcd-certs
+    - client-cert
+
+- name: Generate etcd client CSR
+  openssl_csr:
+    path: "{{ etcd_cert_path }}/client.csr"
+    privatekey_path: "{{ etcd_cert_path }}/client-key.pem"
+    common_name: "etcd-client"
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    extended_key_usage:
+      - clientAuth
+  tags:
+    - etcd-certs
+    - client-cert
+
+- name: Generate etcd client certificate
+  openssl_certificate:
+    path: "{{ etcd_cert_path }}/client.pem"
+    csr_path: "{{ etcd_cert_path }}/client.csr"
+    ownca_path: "{{ etcd_cert_path }}/ca.pem"
+    ownca_privatekey_path: "{{ etcd_cert_path }}/ca-key.pem"
+    provider: ownca
+    owner: etcd
+    group: etcd
+    mode: '0644'
+  tags:
+    - etcd-certs
+    - client-cert
+
+# ==============================================================================
+# SECTION 6: Generate Peer Certificates (for etcd cluster communication)
+# ==============================================================================
+
+- name: Generate etcd peer private key
+  openssl_privatekey:
+    path: "{{ etcd_cert_path }}/peer-key.pem"
+    size: 2048
+    type: RSA
+    owner: etcd
+    group: etcd
+    mode: '0600'
+  tags:
+    - etcd-certs
+    - peer-cert
+
+- name: Generate etcd peer CSR
+  openssl_csr:
+    path: "{{ etcd_cert_path }}/peer.csr"
+    privatekey_path: "{{ etcd_cert_path }}/peer-key.pem"
+    subject_alt_name: "DNS:{{ inventory_hostname }},DNS:localhost,DNS:{{ ansible_hostname }},IP:{{ ansible_default_ipv4.address }},IP:127.0.0.1"
+    common_name: "{{ inventory_hostname }}"
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    extended_key_usage:
+      - serverAuth
+      - clientAuth
+  tags:
+    - etcd-certs
+    - peer-cert
+
+- name: Generate etcd peer certificate
+  openssl_certificate:
+    path: "{{ etcd_cert_path }}/peer.pem"
+    csr_path: "{{ etcd_cert_path }}/peer.csr"
+    ownca_path: "{{ etcd_cert_path }}/ca.pem"
+    ownca_privatekey_path: "{{ etcd_cert_path }}/ca-key.pem"
+    provider: ownca
+    owner: etcd
+    group: etcd
+    mode: '0644'
+  tags:
+    - etcd-certs
+    - peer-cert
+
+# ==============================================================================
+# SECTION 7: Configure ETCD
+# ==============================================================================
+
+- name: Generate etcd configuration file
+  template:
+    src: etcd.service.j2
+    dest: /etc/systemd/system/etcd.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart etcd
+  tags:
+    - etcd-config
+
+- name: Create etcd environment file
+  template:
+    src: etcd.env.j2
+    dest: /etc/etcd/etcd.env
+    owner: etcd
+    group: etcd
+    mode: '0644'
+  notify: Restart etcd
+  tags:
+    - etcd-config
+
+# ==============================================================================
+# SECTION 8: Enable and Start ETCD Service
+# ==============================================================================
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+  tags:
+    - etcd-service
+
+- name: Enable etcd service
+  systemd:
+    name: etcd
+    enabled: yes
+  tags:
+    - etcd-service
+
+- name: Start etcd service
+  systemd:
+    name: etcd
+    state: started
+  tags:
+    - etcd-service
+
+- name: Wait for etcd to be ready
+  shell: |
+    export ETCDCTL_API=3
+    export ETCDCTL_CACERT={{ etcd_cert_path }}/ca.pem
+    export ETCDCTL_CERT={{ etcd_cert_path }}/client.pem
+    export ETCDCTL_KEY={{ etcd_cert_path }}/client-key.pem
+    etcdctl --endpoints=https://127.0.0.1:2379 member list
+  retries: 5
+  delay: 5
+  register: etcd_ready
+  until: etcd_ready.rc == 0
+  tags:
+    - etcd-service
+    - verify
+
+# ==============================================================================
+# SECTION 9: Backup Configuration
+# ==============================================================================
+
+- name: Create etcd backup script
+  template:
+    src: etcd-backup.sh.j2
+    dest: /usr/local/bin/etcd-backup.sh
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - etcd-backup
+
+- name: Create etcd backup cron job
+  cron:
+    name: "ETCD Backup"
+    hour: "*/6"
+    minute: "0"
+    job: "/usr/local/bin/etcd-backup.sh"
+    user: root
+  when: enable_backups
+  tags:
+    - etcd-backup
+    - cron
+
+# ==============================================================================
+# SECTION 10: Health Check
+# ==============================================================================
+
+- name: Verify etcd cluster health
+  shell: |
+    export ETCDCTL_API=3
+    export ETCDCTL_CACERT={{ etcd_cert_path }}/ca.pem
+    export ETCDCTL_CERT={{ etcd_cert_path }}/client.pem
+    export ETCDCTL_KEY={{ etcd_cert_path }}/client-key.pem
+    etcdctl --endpoints=https://127.0.0.1:2379 endpoint health
+  register: etcd_health
+  changed_when: false
+  tags:
+    - etcd-health
+    - verify
+
+- name: Display etcd cluster health
+  debug:
+    msg: "{{ etcd_health.stdout_lines }}"
+  tags:
+    - etcd-health
+    - verify
+
+# ==============================================================================
+# Cleanup
+# ==============================================================================
+
+- name: Clean up temporary files
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/etcd.tar.gz
+    - /tmp/etcd-v*
+  tags:
+    - cleanup

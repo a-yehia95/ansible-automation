@@ -1,0 +1,34 @@
+# ==============================================================================
+# Git Ignore - RHEL 9 CIS Hardening
+# ==============================================================================
+
+# Logs
+logs/
+*.log
+
+# Cache
+.cache/
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# Credentials
+.vault_pass
+vault_pass
+secrets.yml
+
+# Temporary files
+*.tmp
+*.bak
+*~
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.vagrant/

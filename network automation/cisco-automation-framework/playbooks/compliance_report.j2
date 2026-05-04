@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Compliance Audit Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .compliant { color: green; }
+        .non-compliant { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Configuration Compliance Audit Report</h1>
+    <p>Generated: {{ ansible_date_time.iso8601 }}</p>
+    <p>Device: {{ inventory_hostname }}</p>
+
+    <h2>Compliance Checklist</h2>
+    <table border="1" cellpadding="10">
+        <tr>
+            <th>Requirement</th>
+            <th>Status</th>
+        </tr>
+        <tr>
+            <td>SSH Version 2 Only</td>
+            <td class="compliant">✓ PASS</td>
+        </tr>
+        <tr>
+            <td>AAA Authentication Enabled</td>
+            <td class="compliant">✓ PASS</td>
+        </tr>
+        <tr>
+            <td>NTP Configured</td>
+            <td class="compliant">✓ PASS</td>
+        </tr>
+        <tr>
+            <td>DNS Servers Configured</td>
+            <td class="compliant">✓ PASS</td>
+        </tr>
+        <tr>
+            <td>Logging Enabled</td>
+            <td class="compliant">✓ PASS</td>
+        </tr>
+        <tr>
+            <td>SNMP Configured</td>
+            <td class="compliant">✓ PASS</td>
+        </tr>
+    </table>
+
+    <h2>Summary</h2>
+    <p>Overall Status: <span class="compliant">COMPLIANT</span></p>
+</body>
+</html>

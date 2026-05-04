@@ -1,0 +1,73 @@
+$TTL 86400
+@  IN SOA services.linuxplus.local. admin.linuxplus.local. (
+                        2025081301  ; serial (YYYYMMDDnn format recommended)
+                        1D          ; refresh
+                        1H          ; retry
+                        1W          ; expire
+                        3H )        ; minimum
+
+; Name Servers
+@       IN      NS      services.linuxplus.local.
+
+; DNS Server IP
+services        IN      A       10.100.99.99
+
+; Host Records
+racdb1          IN      A       10.100.99.10
+racdb2          IN      A       10.100.99.20
+
+racdb1-vip      IN      A       10.100.99.11
+racdb2-vip      IN      A       10.100.99.21
+
+racdb1-priv     IN      A       192.168.99.10
+racdb2-priv     IN      A       192.168.99.20
+
+racdb-scan      IN      A       10.100.99.30
+racdb-scan      IN      A       10.100.99.31
+racdb-scan      IN      A       10.100.99.32
+
+racdg1          IN      A       10.100.99.110
+racdg2          IN      A       10.100.99.120
+
+racdg1-vip      IN      A       10.100.99.111
+racdg2-vip      IN      A       10.100.99.121
+
+racdg1-priv     IN      A       192.168.99.110
+racdg2-priv     IN      A       192.168.99.120
+
+racdg-scan      IN      A       10.100.99.130
+racdg-scan      IN      A       10.100.99.131
+racdg-scan      IN      A       10.100.99.132
+
+oem             IN      A       10.100.99.25
+
+sno.cluster01	IN	A	10.100.88.188
+
+api.hacluster.linuxplus.local.    	IN	A	10.100.98.31
+api-int.hacluster.linuxplus.local.	IN	A	10.100.98.32
+
+*.apps.hacluster.linuxplus.local.	IN	A	10.100.98.33
+
+control-plane01.hacluster.linuxplus.local.	IN	A	10.100.98.10
+control-plane02.hacluster.linuxplus.local.	IN	A	10.100.98.20
+control-plane03.hacluster.linuxplus.local.	IN	A	10.100.98.30
+;
+worker01.hacluster.linuxplus.local.	IN	A	10.100.98.40
+worker02.hacluster.linuxplus.local.	IN	A	10.100.98.50
+
+rac9db1         IN      A       10.100.99.210
+rac9db2         IN      A       10.100.99.220
+
+rac9db1-vip     IN      A       10.100.99.211
+rac9db2-vip     IN      A       10.100.99.221
+
+rac9db1-priv    IN      A       192.168.99.210
+rac9db2-priv    IN      A       192.168.99.220
+
+rac9db-scan     IN      A       10.100.99.230
+rac9db-scan     IN      A       10.100.99.231
+rac9db-scan     IN      A       10.100.99.232
+
+kvm1            IN      A       10.100.99.201
+kvm2            IN      A       10.100.99.202
+ovirt           IN      A       10.100.99.200

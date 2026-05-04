@@ -1,0 +1,30 @@
+---
+# ==============================================================================
+# Role: cis_system_settings - Default Variables
+# ==============================================================================
+
+cis_system_settings:
+  # Boot Loader
+  bootloader_password_hashed: false
+  
+  # Kernel Parameters
+  kernel_params:
+    kernel.randomize_va_space: 2
+    kernel.yama.ptrace_scope: 2
+    kernel.kptr_restrict: 1
+    kernel.dmesg_restrict: 1
+    kernel.printk: "3 3 3 3"
+    kernel.unprivileged_bpf_disabled: 1
+    kernel.unprivileged_userns_clone: 0
+    net.ipv4.conf.all.arp_ignore: 1
+    net.ipv4.conf.default.arp_ignore: 1
+  
+  # Core Dumps
+  core_dumps_restricted: true
+  
+  # SELinux Configuration
+  selinux_enabled: true
+  selinux_policy: targeted
+  selinux_mode: enforcing
+
+enable_system_settings: true

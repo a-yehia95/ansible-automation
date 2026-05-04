@@ -1,0 +1,51 @@
+---
+# ============================================================================
+# IOS Devices Group Variables (Switches & Routers)
+# ============================================================================
+
+ansible_connection: network_cli
+ansible_network_os: ios
+ansible_user: "{{ ios_user }}"  # Use Vault
+ansible_password: "{{ ios_password }}"  # Use Vault
+
+# Enable/Privileged Mode
+ansible_become: true
+ansible_become_method: enable
+ansible_become_pass: "{{ ios_enable_password }}"  # Use Vault
+
+# Interface defaults
+interface_defaults:
+  mtu: 1500
+  speed: auto
+  duplex: auto
+  description_prefix: "MGMT"
+
+# VLAN Configuration
+vlans:
+  - vlan_id: 1
+    name: default
+  - vlan_id: 100
+    name: management
+  - vlan_id: 200
+    name: data
+  - vlan_id: 300
+    name: voice
+
+# Routing defaults
+routing_config:
+  igp_protocol: ospf
+  ospf_process_id: 1
+  ospf_priority: 128
+  bgp_enabled: false
+
+# Interface descriptions for standard ports
+interface_descriptions:
+  uplink: "Uplink to Distribution"
+  downlink: "Downlink to Access"
+  management: "Out-of-band Management"
+
+# Configuration file management
+config_backup:
+  enabled: true
+  source: running-config
+  destination: startup-config

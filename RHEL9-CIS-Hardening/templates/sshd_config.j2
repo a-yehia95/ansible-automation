@@ -1,0 +1,53 @@
+# ==============================================================================
+# SSH Server Configuration Template (sshd_config)
+# ==============================================================================
+# CIS Benchmark hardened SSH configuration for RHEL 9
+
+# Network and Protocol
+Port {{ cis_authentication.ssh_config.port }}
+AddressFamily inet
+Protocol 2
+
+# Authentication
+PubkeyAuthentication {{ cis_authentication.ssh_config.pubkey_authentication }}
+PasswordAuthentication {{ cis_authentication.ssh_config.password_authentication }}
+PermitEmptyPasswords {{ cis_authentication.ssh_config.permit_empty_password }}
+PermitRootLogin {{ cis_authentication.ssh_config.permit_root_login }}
+MaxAuthTries {{ cis_authentication.ssh_config.maxauthtries }}
+
+# Ciphers and encryption
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
+HostKeyAlgorithms ecdsa-sha2-nistp521,ecdsa-sha2-nistp256,ssh-rsa
+
+# Session options
+X11Forwarding {{ cis_authentication.ssh_config.x11_forwarding }}
+X11UseLocalhost yes
+PermitUserEnvironment {{ cis_authentication.ssh_config.permituserenvironment }}
+Compression {{ cis_authentication.ssh_config.compression }}
+ClientAliveInterval {{ cis_authentication.ssh_config.clientaliveinterval }}
+ClientAliveCount {{ cis_authentication.ssh_config.clientalivecount }}
+MaxSessions {{ cis_authentication.ssh_config.maxsessions }}
+
+# Security options
+HostbasedAuthentication {{ cis_authentication.ssh_config.hostbasedauthentication }}
+KbdInteractiveAuthentication {{ cis_authentication.ssh_config.kbdinteractiveauthentication }}
+GSSAPIAuthentication {{ cis_authentication.ssh_config.gssapiauthentication }}
+UsePAM {{ cis_authentication.ssh_config.usepam }}
+
+# Logging
+SyslogFacility AUTH
+LogLevel VERBOSE
+
+# Banner
+Banner /etc/ssh/banner
+
+# Authorized keys location
+AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys2
+
+# Subsystem
+Subsystem sftp /usr/lib/openssh/sftp-server -f AUTHPRIV -l INFO
+
+# Include additional configuration
+Include /etc/ssh/sshd_config.d/*

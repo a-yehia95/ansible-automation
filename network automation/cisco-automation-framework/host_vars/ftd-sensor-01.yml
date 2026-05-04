@@ -1,0 +1,179 @@
+---
+# ============================================================================
+# Host Variables: FTD Sensor 01 (Managed by FMC)
+# ============================================================================
+
+# Device Identification
+device_name: ftd-sensor-01
+device_role: security_appliance
+device_site: datacenter-primary
+device_location: "Building A, Floor 2, Rack 8"
+device_model: Cisco Firepower 4120
+device_serial: "FCW9876A1234"
+
+# FMC Management Registration
+fmc_config:
+  fmc_hostname: firepower.example.com
+  fmc_ip: 192.168.2.200
+  fmc_device_id: "550e8400-e29b-41d4-a716-446655440000"
+  fmc_registration_key: "{{ ftd_sensor_01_fmc_reg_key }}"  # Use Vault
+  fmc_nat_id: "550e8400-e29b-41d4-a716-446655440099"
+  management_interface: Management0/0
+  device_certificate_fingerprint: "{{ ftd_sensor_01_cert_fp }}"
+
+# System Configuration (Day 0)
+hostname: ftd-sensor-01
+system_config:
+  enable_password: "{{ ftd_sensor_01_enable_pass }}"  # Use Vault
+  domain: example.com
+  management_ip: 192.168.2.50
+  management_netmask: 255.255.255.0
+  management_gateway: 192.168.2.1
+  dns_servers:
+    - 8.8.8.8
+    - 8.8.4.4
+
+# Interface Configuration (Day 1)
+interfaces:
+  - name: GigabitEthernet0/0
+    description: "Inside Interface - LAN"
+    enabled: true
+    ip_address: 10.100.1.254
+    subnet_mask: 255.255.255.0
+    security_level: 100
+    mtu: 1500
+
+  - name: GigabitEthernet0/1
+    description: "Outside Interface - WAN"
+    enabled: true
+    ip_address: 203.0.113.1
+    subnet_mask: 255.255.255.0
+    security_level: 0
+    mtu: 1500
+
+  - name: Management0/0
+    description: "FMC Management Interface"
+    enabled: true
+    ip_address: 192.168.2.50
+    subnet_mask: 255.255.255.0
+    gateway: 192.168.2.1
+
+# Network Objects (Day 1)
+network_objects:
+  - name: "Internal-Network"
+    type: network
+    value: 10.100.0.0
+    netmask: 255.255.0.0
+    description: "Internal corporate network"
+
+  - name: "DMZ-Network"
+    type: network
+    value: 192.168.0.0
+    netmask: 255.255.255.0
+    description: "DMZ segment"
+
+  - name: "Management-Subnet"
+    type: network
+    value: 192.168.1.0
+    netmask: 255.255.255.0
+    description: "Management network"
+
+# Service Objects (Day 1)
+service_objects:
+  - name: "HTTP-Service"
+    protocol: tcp
+    port: 80
+
+  - name: "HTTPS-Service"
+    protocol: tcp
+    port: 443
+
+  - name: "DNS-Service"
+    protocol: udp
+    port: 53
+
+# Access Control Policy (Day 1)
+access_control_policies:
+  - name: "Default_ACP_Production"
+    description: "Default production access control policy"
+    default_action: block
+    rules:
+      - id: 1
+        name: "Allow-Internal-to-External"
+        source_zones: ["inside"]
+        dest_zones: ["outside"]
+        source_objects: ["Internal-Network"]
+        dest_objects: ["any"]
+        services: ["HTTP-Service", "HTTPS-Service", "DNS-Service"]
+        action: allow
+        log_enabled: true
+
+      - id: 2
+        name: "Allow-Management"
+        source_zones: ["management"]
+        dest_zones: ["inside", "outside"]
+        source_objects: ["Management-Subnet"]
+        dest_objects: ["any"]
+        services: ["any"]
+        action: allow
+        log_enabled: true
+
+      - id: 3
+        name: "Block-All"
+        source_zones: ["any"]
+        dest_zones: ["any"]
+        action: block
+        log_enabled: true
+
+# NAT Policy (Day 1)
+nat_policy:
+  - name: "Internal-to-External-NAT"
+    type: dynamic
+    inside_interface: GigabitEthernet0/0
+    outside_interface: GigabitEthernet0/1
+    source_network: "Internal-Network"
+    translated_address: 203.0.113.0
+    translated_netmask: 255.255.255.0
+    service_protocol: tcp
+    enabled: true
+
+# Security Intelligence (Day 1)
+security_intelligence:
+  threat_defense_enabled: true
+  url_filtering_enabled: true
+  file_inspection_enabled: true
+  ssl_inspection_enabled: false
+  dynamic_db_update_interval: 3600
+  threat_level_threshold: "medium"
+  reputation_filtering: true
+
+# IPS/IDS Configuration (Day 1)
+intrusion_prevention:
+  enabled: true
+  inspection_mode: inline
+  threat_level: balanced
+  policy_name: "Default-IPS"
+
+# Health Check Thresholds (Day 2)
+health_check:
+  cpu_threshold: 80
+  memory_threshold: 85
+  failover_link_timeout: 30
+  interface_down_alert: true
+  management_connection_timeout: 60
+
+# Backup Configuration (Day 2)
+backup:
+  enabled: true
+  frequency: daily
+  time: "02:30"
+  retention_days: 30
+  backup_location: "/mnt/backups"
+
+# Compliance & Validation (Day 2)
+compliance:
+  certificate_expiry_check: true
+  license_status_check: true
+  threat_definition_age_max_days: 7
+  password_policy_enforced: true
+  failed_login_attempts_max: 3

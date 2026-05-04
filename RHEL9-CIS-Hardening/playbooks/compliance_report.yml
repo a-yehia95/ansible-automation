@@ -1,0 +1,47 @@
+---
+# ==============================================================================
+# Compliance Report Playbook - Generate CIS Hardening Report
+# ==============================================================================
+# Generates detailed CIS compliance report
+# Usage: ansible-playbook -i inventory/hosts playbooks/compliance_report.yml
+
+- name: Generate RHEL 9 CIS Compliance Report
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Create reports directory
+      file:
+        path: "{{ playbook_dir }}/../reports"
+        state: directory
+        mode: "0755"
+      tags:
+        - report
+
+    - name: Generate compliance report
+      template:
+        src: compliance_report.j2
+        dest: "{{ playbook_dir }}/../reports/CIS_Compliance_Report_{{ ansible_date_time.date }}.html"
+        mode: "0644"
+      tags:
+        - report
+
+    - name: Display report location
+      debug:
+        msg: |
+          =====================================================================
+          COMPLIANCE REPORT GENERATED
+          =====================================================================
+          Report Location: reports/CIS_Compliance_Report_{{ ansible_date_time.date }}.html
+          
+          The report contains:
+          - CIS benchmark overview
+          - Hardening areas coverage
+          - Key configurations applied
+          - Recommended next steps
+          - Security references
+          
+          Open the report in a web browser for full details.
+          =====================================================================
+      tags:
+        - always

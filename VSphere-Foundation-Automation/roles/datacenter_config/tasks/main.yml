@@ -1,0 +1,89 @@
+---
+# ==============================================================================
+# Role: datacenter_config
+# Description: Create and configure vSphere datacenters
+# ==============================================================================
+
+- name: Manage vSphere Datacenters
+  block:
+    - name: Retrieve datacenter information
+      vmware.rest.vcenter_datacenter_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+      register: existing_datacenters
+      tags:
+        - datacenter_query
+
+    - name: Display existing datacenters
+      debug:
+        msg: |
+          Existing Datacenters:
+          {% for dc in existing_datacenters.value | default([]) %}
+          - {{ dc.name }} ({{ dc.datacenter }})
+          {% endfor %}
+        verbosity: 1
+      tags:
+        - datacenter_query
+        - debug
+
+    - name: Create datacenter if not exists
+      vmware.rest.vcenter_datacenter:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        name: "{{ dc_item.name }}"
+        state: present
+      register: datacenter_result
+      loop: "{{ day0_config.datacenter | list if day0_config.datacenter is defined else [] }}"
+      loop_control:
+        loop_var: dc_item
+      when: day0_config.datacenter is defined
+      tags:
+        - datacenter_create
+
+    - name: Display datacenter creation results
+      debug:
+        msg: |
+          Datacenter Creation Results:
+          Name: {{ item.result.name | default('N/A') }}
+          ID: {{ item.result.datacenter | default('N/A') }}
+          State: {{ item.result.state | default('N/A') }}
+      loop: "{{ datacenter_result.results | default([]) }}"
+      when: datacenter_result.results is defined
+      tags:
+        - datacenter_create
+        - debug
+
+    - name: Create datacenter folders (if needed)
+      vmware.rest.vcenter_folder:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        name: "{{ folder.name }}"
+        parent_folder: "{{ folder.parent_folder | default(omit) }}"
+        type: "{{ folder.type | default('FOLDER') }}"
+        state: present
+      register: folder_result
+      loop: "{{ day0_config.folders | default([]) }}"
+      loop_control:
+        loop_var: folder
+      tags:
+        - datacenter_folders
+
+  rescue:
+    - name: Handle datacenter configuration error
+      debug:
+        msg: |
+          Error configuring datacenters:
+          {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags:
+        - error_handling
+
+  tags:
+    - datacenter_config
+    - day0
+    - foundation

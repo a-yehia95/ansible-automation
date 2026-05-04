@@ -1,0 +1,32 @@
+# ==============================================================================
+# File Audit Report Template
+# ==============================================================================
+# Generated audit report for file system review
+
+CIS RHEL 9 File Audit Report
+Generated: {{ ansible_date_time.iso8601 }}
+Host: {{ inventory_hostname }}
+
+==============================================================================
+SPECIAL PERMISSIONS AUDIT
+==============================================================================
+
+This report documents special permission files that should be reviewed for
+security compliance. SUID/SGID/Sticky bit permissions can pose security risks
+if not properly managed.
+
+Note: A comprehensive audit should be performed manually using:
+- SUID files: find / -xdev -type f -perm -4000 2>/dev/null
+- SGID files: find / -xdev -type f -perm -2000 2>/dev/null
+- Sticky bit: find / -xdev -type d -perm -1000 2>/dev/null
+
+Common SUID/SGID binaries that are typically expected:
+- /usr/bin/sudo (SUID)
+- /usr/bin/su (SUID)
+- /bin/passwd (SUID)
+- /usr/bin/chsh (SUID)
+- /usr/bin/chfn (SUID)
+- /usr/libexec/pt_chown (SUID)
+
+Review any other SUID/SGID files for necessity and consider removal if
+not required for system operation.

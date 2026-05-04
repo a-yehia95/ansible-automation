@@ -1,0 +1,163 @@
+---
+# ==============================================================================
+# Master Playbook - RHEL 9 CIS Hardening
+# ==============================================================================
+# Main orchestrator for applying comprehensive CIS benchmark hardening
+# Usage: ansible-playbook -i inventory/hosts playbooks/master.yml
+
+- name: RHEL 9 CIS Hardening - Master Playbook
+  hosts: rhel9_servers
+  become: true
+  vars_files:
+    - ../inventory/group_vars/rhel9_servers.yml
+  
+  pre_tasks:
+    - name: Display hardening start information
+      debug:
+        msg: |
+          =====================================================================
+          RHEL 9 CIS HARDENING - STARTING
+          =====================================================================
+          Target Host: {{ inventory_hostname }}
+          CIS Profile: {{ cis_profile }}
+          Timestamp: {{ ansible_date_time.iso8601 }}
+          
+          Hardening areas to be applied:
+          - Account Policies & Access Control
+          - File Permissions & Ownership
+          - Logging & Auditing Configuration
+          - Firewall & Network Security
+          - Package Management
+          - System Settings & Kernel Hardening
+          - SSH & PAM Authentication
+          - System Services Hardening
+          =====================================================================
+      tags:
+        - always
+
+    - name: Perform system pre-checks
+      block:
+        - name: Check if system is RHEL 9
+          assert:
+            that:
+              - ansible_os_family == "RedHat"
+              - ansible_distribution_version is version('9.0', '>=')
+              - ansible_distribution_version is version('9.9', '<=')
+            fail_msg: "This playbook is designed for RHEL 9.x only"
+          tags:
+            - pre_check
+
+        - name: Verify Ansible version
+          assert:
+            that:
+              - ansible_version.full is version('2.9', '>=')
+            fail_msg: "Ansible 2.9 or higher is required"
+          tags:
+            - pre_check
+
+        - name: Display system information
+          debug:
+            msg: |
+              System Information:
+              - OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+              - Kernel: {{ ansible_kernel }}
+              - Processor: {{ ansible_processor_count }} CPUs
+          tags:
+            - pre_check
+            - always
+
+      tags:
+        - pre_check
+
+  roles:
+    # Phase 1: Package Management & Filesystem (Must be first)
+    - role: cis_package_management
+      when: enable_package_management | default(true)
+      tags:
+        - cis_1
+        - package_management
+
+    # Phase 2: System Settings & Kernel Hardening
+    - role: cis_system_settings
+      when: enable_system_settings | default(true)
+      tags:
+        - cis_2
+        - system_settings
+
+    # Phase 3: Network & Firewall Security
+    - role: cis_firewall_network
+      when: enable_firewall_network | default(true)
+      tags:
+        - cis_3
+        - firewall_network
+
+    # Phase 4: Logging & Auditing
+    - role: cis_logging_auditing
+      when: enable_logging_auditing | default(true)
+      tags:
+        - cis_4
+        - logging_auditing
+
+    # Phase 5: Account Policies & Access Control
+    - role: cis_account_policies
+      when: enable_account_policies | default(true)
+      tags:
+        - cis_5
+        - account_policies
+
+    # Phase 6: File Permissions & Ownership
+    - role: cis_file_permissions
+      when: enable_file_permissions | default(true)
+      tags:
+        - cis_6
+        - file_permissions
+
+    # Phase 7: Services Hardening
+    - role: cis_services
+      when: enable_services | default(true)
+      tags:
+        - cis_7
+        - services
+
+    # Phase 8: SSH & PAM Authentication
+    - role: cis_authentication
+      when: enable_authentication | default(true)
+      tags:
+        - cis_5_2
+        - authentication
+
+  post_tasks:
+    - name: Display hardening completion summary
+      debug:
+        msg: |
+          =====================================================================
+          RHEL 9 CIS HARDENING - COMPLETED SUCCESSFULLY
+          =====================================================================
+          All hardening phases completed on {{ inventory_hostname }}
+          
+          Next steps:
+          1. Review generated audit reports
+          2. Validate compliance with: ansible-playbook playbooks/validate.yml
+          3. Generate compliance report: ansible-playbook playbooks/compliance_report.yml
+          
+          Critical post-hardening tasks:
+          - [ ] Review firewall rules and add application-specific rules
+          - [ ] Configure SSH key-based authentication
+          - [ ] Disable SSH password authentication
+          - [ ] Test system functionality
+          - [ ] Review log files for any errors
+          - [ ] Document any customizations made
+          
+          =====================================================================
+      tags:
+        - always
+
+    - name: Create audit timestamp
+      set_fact:
+        audit_timestamp: "{{ ansible_date_time.iso8601 }}"
+      tags:
+        - always
+
+  tags:
+    - cis_hardening
+    - rhel9

@@ -1,0 +1,197 @@
+---
+# ==============================================================================
+# Power Management Role - Tasks
+# ==============================================================================
+# Manages VM power states: power on, power off, restart
+
+- name: Display power management information
+  debug:
+    msg:
+      - "=========================================="
+      - "VM Power Management"
+      - "=========================================="
+      - "VMs: {{ vm_names | default([vm_name]) | length }}"
+      - "Target State: {{ power_state }}"
+      - "Force Shutdown: {{ force_shutdown }}"
+      - "=========================================="
+  tags:
+    - day2
+    - administration
+    - power
+    - always
+
+# ==============================================================================
+# Get Current Power State
+# ==============================================================================
+
+- name: Get current power state
+  vmware_guest_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ item }}"
+    datacenter: "{{ datacenter_name }}"
+  loop: "{{ vm_names | default([vm_name]) }}"
+  delegate_to: localhost
+  register: current_power_state
+  tags:
+    - day2
+    - administration
+    - power
+    - info
+
+- name: Display current power states
+  debug:
+    msg:
+      - "{{ item.instance.hw_name }}: {{ item.instance.powerstate }}"
+  loop: "{{ current_power_state.results }}"
+  tags:
+    - day2
+    - administration
+    - power
+    - info
+    - always
+
+# ==============================================================================
+# Power On VMs
+# ==============================================================================
+
+- name: Power on VMs
+  vmware_guest_powerstate:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ item }}"
+    datacenter: "{{ datacenter_name }}"
+    state: powered_on
+  loop: "{{ vm_names | default([vm_name]) }}"
+  delegate_to: localhost
+  when: power_state == "powered_on"
+  tags:
+    - day2
+    - administration
+    - power
+    - on
+
+# ==============================================================================
+# Power Off VMs (Graceful)
+# ==============================================================================
+
+- name: Shutdown VMs gracefully
+  vmware_guest_powerstate:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ item }}"
+    datacenter: "{{ datacenter_name }}"
+    state: shutdown_guest
+    force: false
+  loop: "{{ vm_names | default([vm_name]) }}"
+  delegate_to: localhost
+  when:
+    - power_state == "powered_off"
+    - not force_shutdown | bool
+  tags:
+    - day2
+    - administration
+    - power
+    - off
+
+# ==============================================================================
+# Power Off VMs (Forced)
+# ==============================================================================
+
+- name: Power off VMs (forced)
+  vmware_guest_powerstate:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ item }}"
+    datacenter: "{{ datacenter_name }}"
+    state: powered_off
+    force: true
+  loop: "{{ vm_names | default([vm_name]) }}"
+  delegate_to: localhost
+  when:
+    - power_state == "powered_off"
+    - force_shutdown | bool
+  tags:
+    - day2
+    - administration
+    - power
+    - off-force
+
+# ==============================================================================
+# Restart VMs
+# ==============================================================================
+
+- name: Restart VMs
+  vmware_guest_powerstate:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ item }}"
+    datacenter: "{{ datacenter_name }}"
+    state: restarted
+    force: "{{ force_shutdown }}"
+  loop: "{{ vm_names | default([vm_name]) }}"
+  delegate_to: localhost
+  when: power_state == "restarted"
+  tags:
+    - day2
+    - administration
+    - power
+    - restart
+
+# ==============================================================================
+# Wait for State Change (Optional)
+# ==============================================================================
+
+- name: Wait for power state change
+  vmware_guest_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ item }}"
+    datacenter: "{{ datacenter_name }}"
+  loop: "{{ vm_names | default([vm_name]) }}"
+  delegate_to: localhost
+  register: verify_power_state
+  until:
+    - (power_state == "powered_on" and verify_power_state.instance.powerstate == "poweredOn") or
+      (power_state == "powered_off" and verify_power_state.instance.powerstate == "poweredOff") or
+      (power_state == "restarted")
+  retries: 60
+  delay: 5
+  when: wait_for_state_change | bool
+  tags:
+    - day2
+    - administration
+    - power
+    - verify
+
+- name: Display final power states
+  debug:
+    msg:
+      - "Final Power States:"
+      - "{{ item.instance.hw_name }}: {{ item.instance.powerstate }}"
+  loop: "{{ verify_power_state.results }}"
+  when: wait_for_state_change | bool
+  tags:
+    - day2
+    - administration
+    - power
+    - verify
+    - always

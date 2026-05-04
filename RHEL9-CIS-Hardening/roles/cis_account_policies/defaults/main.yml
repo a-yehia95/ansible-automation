@@ -1,0 +1,27 @@
+---
+# ==============================================================================
+# Role: cis_account_policies - Default Variables
+# ==============================================================================
+
+# Password Policy Defaults
+cis_account_policies:
+  password_max_days: 90
+  password_min_days: 1
+  password_min_length: 14
+  password_warn_age: 14
+  password_max_retry: 3
+  password_fail_delay: 4
+  session_timeout_seconds: 900
+  account_lock_threshold: 5
+  account_lock_duration: 900
+  permit_root_login: "without-password"
+  permit_empty_password: false
+  sudo_use_pty: true
+  sudo_log_file: "/var/log/sudo.log"
+  sudo_require_password_restart: true
+  umask_default: "0077"
+  umask_shell: "0077"
+  default_gid: 1000
+
+# Enable account policies
+enable_account_policies: true

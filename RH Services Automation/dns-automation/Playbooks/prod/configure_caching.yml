@@ -1,0 +1,46 @@
+---
+- name: Install cache only nameserver
+  hosts: caching_dns
+  remote_user: devops
+  become: true
+
+  vars:
+    interface: 0.0.0.0
+    interface_automatic: "yes"
+    access_control:
+      - "172.25.250.0/24 allow"
+    domain_insecure: example.com
+    forward_zone_name: .
+    forward_zone_addr: "172.25.250.220"
+
+  tasks:
+    - name: Install cache only nameserver
+      ansible.builtin.dnf:
+        name: unbound
+        state: present
+
+    - name: Create configuration file on caching server host
+      ansible.builtin.template:
+        src: unbound.conf.j2
+        dest: /etc/unbound/conf.d/unbound.conf
+      notify:
+        - restart_unbound
+
+    - name: Allow dns service on firewall
+      ansible.posix.firewalld:
+        service: dns
+        state: enabled
+        immediate: true
+        permanent: true
+
+    - name: Ensure unbound is running and enabled
+      ansible.builtin.service:
+        name: unbound
+        state: started
+        enabled: true
+
+  handlers:
+    - name: restart_unbound
+      ansible.builtin.service:
+        name: unbound
+        state: restarted

@@ -1,0 +1,100 @@
+---
+# ==============================================================================
+# Role: cluster_management
+# Description: Create and configure vSphere Clusters with HA/DRS
+# ==============================================================================
+
+- name: Manage vSphere Clusters
+  block:
+    - name: Query existing clusters
+      vmware.rest.vcenter_cluster_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        filter_names:
+          - "{{ cluster_name }}"
+      register: cluster_info
+      tags:
+        - cluster_query
+
+    - name: Display cluster query results
+      debug:
+        msg: |
+          Cluster Query Results:
+          {% for cluster in cluster_info.value | default([]) %}
+          - Name: {{ cluster.name }}
+            ID: {{ cluster.cluster }}
+            DRS: {{ cluster.drs_enabled | default('N/A') }}
+            HA: {{ cluster.ha_enabled | default('N/A') }}
+          {% endfor %}
+        verbosity: 1
+      tags:
+        - cluster_query
+        - debug
+
+    - name: Create cluster if not exists
+      vmware.rest.vcenter_cluster:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        datacenter: "{{ cluster.datacenter }}"
+        name: "{{ cluster.name }}"
+        state: present
+      register: cluster_result
+      loop: "{{ day0_config.clusters | default([]) }}"
+      loop_control:
+        loop_var: cluster
+      when: day0_config.clusters is defined
+      tags:
+        - cluster_create
+
+    - name: Configure cluster HA settings
+      vmware.rest.vcenter_cluster_config:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        cluster: "{{ cluster.name }}"
+        ha_enabled: "{{ cluster.ha_enabled | default(true) }}"
+        ha_host_monitoring: enabled
+        ha_vm_monitoring: vmMonitoringOnly
+        ha_vm_failure_interval: 30
+        ha_vm_minimum_uptime: 120
+        ha_vm_restart_priority: high
+        drs_enabled: "{{ cluster.drs_enabled | default(true) }}"
+        drs_automation_level: "{{ cluster.drs_automation_level | default('fullyAutomated') }}"
+      register: cluster_config_result
+      loop: "{{ day0_config.clusters | default([]) }}"
+      loop_control:
+        loop_var: cluster
+      tags:
+        - cluster_config
+
+    - name: Display cluster configuration results
+      debug:
+        msg: |
+          Cluster Configuration:
+          Name: {{ item.result.name | default('N/A') }}
+          HA Enabled: {{ item.result.ha_enabled | default('N/A') }}
+          DRS Enabled: {{ item.result.drs_enabled | default('N/A') }}
+      loop: "{{ cluster_result.results | default([]) }}"
+      when: cluster_result.results is defined
+      tags:
+        - cluster_create
+        - debug
+
+  rescue:
+    - name: Handle cluster management error
+      debug:
+        msg: |
+          Error managing clusters:
+          {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags:
+        - error_handling
+
+  tags:
+    - cluster_management
+    - day0
+    - foundation

@@ -1,0 +1,130 @@
+---
+# ============================================================================
+# Backup Role - Day 2 Operations: Configuration Backup & Git
+# ============================================================================
+
+# Get Running Configuration
+- name: Get running configuration
+  cisco.ios.ios_command:
+    commands:
+      - "show running-config"
+  register: running_config
+  tags:
+    - day2
+    - backup
+
+# Create backup directory
+- name: Create backup directory
+  file:
+    path: "{{ backup_config.backup_path }}"
+    state: directory
+  delegate_to: localhost
+  tags:
+    - day2
+    - backup
+
+# Save Configuration to Local File
+- name: Save configuration backup locally
+  copy:
+    content: |
+      ! ============================================
+      ! Device: {{ inventory_hostname }}
+      ! Hostname: {{ ansible_net_hostname | default('Unknown') }}
+      ! Model: {{ ansible_net_model | default('Unknown') }}
+      ! Version: {{ ansible_net_version | default('Unknown') }}
+      ! Serial Number: {{ ansible_net_serialnum | default('Unknown') }}
+      ! Backup Date: {{ ansible_date_time.iso8601 }}
+      ! ============================================
+      !
+      {{ running_config.stdout[0] }}
+    dest: "{{ backup_config.backup_path }}/{{ inventory_hostname }}_backup_{{ ansible_date_time.iso8601 }}.cfg"
+  delegate_to: localhost
+  tags:
+    - day2
+    - backup
+
+# Save Configuration with Timestamp
+- name: Save timestamped configuration
+  copy:
+    content: "{{ running_config.stdout[0] }}"
+    dest: "{{ backup_config.backup_path }}/{{ inventory_hostname }}_{{ ansible_date_time.epoch }}.cfg"
+  delegate_to: localhost
+  tags:
+    - day2
+    - backup
+
+# Clean old backups (retain last N days)
+- name: Remove old backup files (older than {{ backup_config.retention_days }} days)
+  find:
+    paths: "{{ backup_config.backup_path }}"
+    patterns: "{{ inventory_hostname }}_*.cfg"
+    age: "{{ backup_config.retention_days }}d"
+    state: absent
+  delegate_to: localhost
+  tags:
+    - day2
+    - backup
+    - cleanup
+
+# Git Integration (Optional)
+- name: Initialize git repository (if not already done)
+  shell: "cd {{ backup_config.backup_path }} && git init"
+  delegate_to: localhost
+  ignore_errors: true
+  when: backup_config.git_enabled | bool
+  tags:
+    - day2
+    - backup
+    - git
+
+- name: Add backup to git
+  shell: "cd {{ backup_config.backup_path }} && git add {{ inventory_hostname }}_backup_{{ ansible_date_time.iso8601 }}.cfg"
+  delegate_to: localhost
+  when: backup_config.git_enabled | bool
+  tags:
+    - day2
+    - backup
+    - git
+
+- name: Commit to git repository
+  shell: "cd {{ backup_config.backup_path }} && git commit -m 'Backup {{ inventory_hostname }} - {{ ansible_date_time.iso8601 }}'"
+  delegate_to: localhost
+  ignore_errors: true
+  when: backup_config.git_enabled | bool
+  tags:
+    - day2
+    - backup
+    - git
+
+- name: Push to remote git repository
+  shell: "cd {{ backup_config.backup_path }} && git push origin main"
+  delegate_to: localhost
+  ignore_errors: true
+  when: backup_config.git_enabled | bool
+  tags:
+    - day2
+    - backup
+    - git
+
+# Backup Verification
+- name: Verify backup file exists
+  stat:
+    path: "{{ backup_config.backup_path }}/{{ inventory_hostname }}_backup_{{ ansible_date_time.iso8601 }}.cfg"
+  register: backup_file
+  delegate_to: localhost
+  tags:
+    - day2
+    - backup
+    - verification
+
+- name: Display backup status
+  debug:
+    msg: |
+      Backup completed for {{ inventory_hostname }}
+      Location: {{ backup_config.backup_path }}/{{ inventory_hostname }}_backup_{{ ansible_date_time.iso8601 }}.cfg
+      Size: {{ backup_file.stat.size }} bytes
+      Created: {{ ansible_date_time.iso8601 }}
+  tags:
+    - day2
+    - backup
+    - verification

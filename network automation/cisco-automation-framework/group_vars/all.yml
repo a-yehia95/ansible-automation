@@ -1,0 +1,81 @@
+---
+# ============================================================================
+# Global Variables - All Devices
+# ============================================================================
+
+# Environment
+environment: production
+domain_name: example.com
+ntp_servers:
+  - 192.168.1.1
+  - 8.8.8.8
+dns_servers:
+  - 8.8.8.8
+  - 8.8.4.4
+
+# AAA Configuration
+aaa_enabled: true
+tacacs_servers:
+  - host: 192.168.1.100
+    key: "{{ tacacs_shared_key }}"  # Use Vault
+    port: 49
+  - host: 192.168.1.101
+    key: "{{ tacacs_shared_key }}"
+    port: 49
+
+# Logging Configuration
+logging_enabled: true
+syslog_servers:
+  - 192.168.1.200
+  - 192.168.1.201
+syslog_facility: local7
+
+# SNMP Configuration
+snmp_enabled: true
+snmp_communities:
+  - community: "{{ snmp_ro_community }}"  # Use Vault
+    access_level: ro
+  - community: "{{ snmp_rw_community }}"  # Use Vault
+    access_level: rw
+snmp_trap_hosts:
+  - 192.168.1.210
+
+# SSH Hardening
+ssh_config:
+  version: 2
+  rsa_keysize: 2048
+  dsa_enabled: false
+  ciphers:
+    - aes128-ctr
+    - aes256-ctr
+  key_exchange:
+    - diffie-hellman-group14-sha256
+  macs:
+    - hmac-sha2-256
+    - hmac-sha2-512
+  lifetime: 3600
+  max_attempts: 3
+
+# Backup Configuration
+backup_config:
+  enabled: true
+  retention_days: 30
+  backup_path: ./backups
+  git_enabled: false
+  git_repo: "https://github.com/org/cisco-configs.git"
+
+# Validation & Monitoring
+validation_enabled: true
+health_check_interval: 300  # seconds
+drift_detection_enabled: true
+
+# Change Management
+maintenance_window:
+  day: Sunday
+  start_hour: 02
+  start_minute: 00
+  duration_hours: 2
+
+# Logging Paths
+log_dir: ./logs
+audit_log: ./logs/audit.log

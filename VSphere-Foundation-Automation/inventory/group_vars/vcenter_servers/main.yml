@@ -1,0 +1,281 @@
+---
+# ==============================================================================
+# Group Variables - vCenter Servers (Common Configuration)
+# ==============================================================================
+# Location: inventory/group_vars/vcenter_servers/main.yml
+# This file contains common vCenter configuration and credentials
+
+# vCenter Connection Settings
+vcenter_hostname: "vcenter.example.com"
+vcenter_port: 443
+vcenter_username: "administrator@vsphere.local"
+# vcenter_password is stored in vault.yml (encrypted)
+# vcenter_password: "{{ vault_vcenter_password }}"
+
+# SSL Certificate Validation
+vcenter_validate_certs: false  # Set to true in production with valid certs
+vcenter_insecure_ssl: true     # Set to false in production
+
+# Environment Configuration
+environment_name: "production"
+datacenter_name: "Datacenter1"
+cluster_name: "Cluster1"
+
+# Day 0 - Foundation Configuration
+# ============================================================
+day0_config:
+  # Datacenter
+  datacenter:
+    name: "{{ datacenter_name }}"
+    description: "Production VMware vSphere Foundation"
+    state: present
+
+  # Clusters
+  clusters:
+    - name: "{{ cluster_name }}"
+      datacenter: "{{ datacenter_name }}"
+      ha_enabled: true
+      drs_enabled: true
+      drs_automation_level: "fullyAutomated"
+      vsan_enabled: false
+      state: present
+
+  # Resource Pools
+  resource_pools:
+    - name: "Production"
+      datacenter: "{{ datacenter_name }}"
+      cluster: "{{ cluster_name }}"
+      cpu_shares: 4000
+      cpu_limit: -1
+      mem_shares: 4000
+      mem_limit: -1
+      description: "Production workload resource pool"
+
+    - name: "Development"
+      datacenter: "{{ datacenter_name }}"
+      cluster: "{{ cluster_name }}"
+      cpu_shares: 2000
+      cpu_limit: -1
+      mem_shares: 2000
+      mem_limit: -1
+      description: "Development workload resource pool"
+
+  # Host Configuration
+  hosts:
+    - name: "esxi01.example.com"
+      cluster: "{{ cluster_name }}"
+      datacenter: "{{ datacenter_name }}"
+      username: "root"
+      # password stored in vault.yml
+      state: present
+      ntp_servers:
+        - "ntp.example.com"
+      maintenance_mode: false
+
+    - name: "esxi02.example.com"
+      cluster: "{{ cluster_name }}"
+      datacenter: "{{ datacenter_name }}"
+      username: "root"
+      state: present
+      ntp_servers:
+        - "ntp.example.com"
+      maintenance_mode: false
+
+  # Datastores
+  datastores:
+    - name: "datastore-vmfs-01"
+      datastore_type: "vmfs"
+      datacenter: "{{ datacenter_name }}"
+      cluster: "{{ cluster_name }}"
+      hosts:
+        - "esxi01.example.com"
+        - "esxi02.example.com"
+
+    - name: "datastore-nfs-01"
+      datastore_type: "nfs"
+      nfs_server: "nfs.example.com"
+      nfs_path: "/export/vmware/datastore1"
+      nfs_version: "nfs41"
+      datacenter: "{{ datacenter_name }}"
+      cluster: "{{ cluster_name }}"
+
+# Day 1 - VM Provisioning Configuration
+# ============================================================
+day1_config:
+  # VM Deployment Templates
+  vm_templates:
+    - name: "Ubuntu-22.04-Template"
+      vm_type: "linux"
+      description: "Ubuntu 22.04 LTS template"
+      cpu: 2
+      memory_mb: 4096
+      disk_gb: 40
+
+    - name: "CentOS-8-Template"
+      vm_type: "linux"
+      description: "CentOS 8 template"
+      cpu: 2
+      memory_mb: 4096
+      disk_gb: 40
+
+    - name: "Windows-2022-Template"
+      vm_type: "windows"
+      description: "Windows Server 2022 template"
+      cpu: 4
+      memory_mb: 8192
+      disk_gb: 60
+
+  # Virtual Machines to Provision
+  virtual_machines:
+    - name: "webserver-01"
+      template: "Ubuntu-22.04-Template"
+      datacenter: "{{ datacenter_name }}"
+      cluster: "{{ cluster_name }}"
+      resource_pool: "Production"
+      datastore: "datastore-vmfs-01"
+      cpu: 4
+      memory_mb: 8192
+      networks:
+        - name: "Production-VLAN"
+          ipv4: "192.168.1.10"
+          netmask: "255.255.255.0"
+          gateway: "192.168.1.1"
+          dns:
+            - "8.8.8.8"
+            - "8.8.4.4"
+      guest_os: "ubuntu64Guest"
+      state: present
+
+    - name: "database-01"
+      template: "CentOS-8-Template"
+      datacenter: "{{ datacenter_name }}"
+      cluster: "{{ cluster_name }}"
+      resource_pool: "Production"
+      datastore: "datastore-vmfs-01"
+      cpu: 8
+      memory_mb: 16384
+      networks:
+        - name: "Database-VLAN"
+          ipv4: "192.168.2.10"
+          netmask: "255.255.255.0"
+          gateway: "192.168.2.1"
+          dns:
+            - "8.8.8.8"
+            - "8.8.4.4"
+      guest_os: "centos8_64Guest"
+      disks:
+        - size_gb: 100
+          datastore: "datastore-nfs-01"
+      state: present
+
+# Day 2 - Administration Configuration
+# ============================================================
+day2_config:
+  # Backup and Snapshot Policy
+  snapshot_policy:
+    enabled: true
+    retention_days: 7
+    frequency: "daily"  # daily, weekly, monthly
+    time: "02:00"
+
+  # VM Maintenance Windows
+  maintenance_windows:
+    - name: "Monthly Patch Tuesday"
+      day: "second_tuesday"
+      time: "22:00"
+      duration_hours: 4
+      vms:
+        - "webserver-01"
+        - "database-01"
+
+  # Monitoring and Alerting
+  monitoring:
+    enabled: true
+    collect_stats: true
+    stats_interval: 300  # seconds
+    alerts:
+      - name: "CPU Usage High"
+        resource: "vm"
+        metric: "cpu_usage_percent"
+        threshold: 80
+        duration: 300
+
+      - name: "Memory Usage High"
+        resource: "vm"
+        metric: "memory_usage_percent"
+        threshold: 85
+        duration: 300
+
+# Tags and Categories (vSphere Tags)
+# ============================================================
+tags:
+  - name: "Environment"
+    description: "Environment category"
+    cardinality: "SINGLE"
+    values:
+      - "production"
+      - "staging"
+      - "development"
+
+  - name: "Application"
+    description: "Application category"
+    cardinality: "MULTIPLE"
+    values:
+      - "web"
+      - "database"
+      - "cache"
+      - "messaging"
+
+# Security and Compliance
+# ============================================================
+security:
+  enable_audit_logging: true
+  enable_syslog: true
+  syslog_servers:
+    - "syslog.example.com:514"
+  enable_snmp: false
+  snmp_communities: []
+
+# Backup Configuration
+# ============================================================
+backup:
+  enabled: true
+  backup_location: "/backup/vsphere"
+  retention_days: 30
+  backup_vms: true
+  backup_configs: true
+
+# Networking (vDS - Distributed Virtual Switch)
+# ============================================================
+networking:
+  vds:
+    - name: "vds-prod-01"
+      datacenter: "{{ datacenter_name }}"
+      version: "7.0.0"
+      mtu: 1500
+      description: "Production vDS"
+      portgroups:
+        - name: "Production-VLAN"
+          vlan_id: 100
+          num_ports: 128
+          type: "earlyBinding"
+
+        - name: "Database-VLAN"
+          vlan_id: 101
+          num_ports: 128
+          type: "earlyBinding"
+
+        - name: "Management-VLAN"
+          vlan_id: 200
+          num_ports: 32
+          type: "earlyBinding"
+
+# Logging and Auditing
+# ============================================================
+logging:
+  level: "INFO"
+  enable_file_logging: true
+  log_retention_days: 30
+  enable_remote_logging: false
+  remote_syslog_server: "syslog.example.com"
+  remote_syslog_port: 514

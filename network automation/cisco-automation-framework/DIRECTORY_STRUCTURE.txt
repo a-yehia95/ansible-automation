@@ -1,0 +1,159 @@
+# Directory Tree Structure
+
+```
+cisco-automation-framework/
+│
+├── 📋 Documentation
+│   ├── README.md                          # Complete documentation
+│   ├── QUICKSTART.md                      # 5-minute quick start
+│   ├── DIRECTORY_STRUCTURE.txt            # This file
+│   ├── setup.sh                           # Linux/Mac setup script
+│   └── setup.bat                          # Windows setup script
+│
+├── ⚙️  Configuration
+│   ├── ansible.cfg                        # Ansible settings
+│   ├── inventory.ini                      # Device inventory (EDIT THIS)
+│   └── requirements.txt                   # Python dependencies
+│
+├── 🎯 Master Playbook
+│   └── site.yml                           # Main orchestration playbook
+│                                          # - Day 0 Provisioning
+│                                          # - Day 1 Deployment
+│                                          # - Day 2 Operations
+│                                          # - Maintenance tasks
+│
+├── 📚 Playbooks (Additional)
+│   ├── playbooks/
+│   │   ├── collect_facts.yml              # Device facts collection
+│   │   ├── drift_detection.yml            # Configuration drift check
+│   │   ├── restore_config.yml             # Configuration restore
+│   │   ├── execution_summary.j2           # Execution report template
+│   │   ├── inventory_report.j2            # Inventory report template
+│   │   └── compliance_report.j2           # Compliance report template
+│   └── backups/                           # Configuration backups
+│       ├── *.cfg                          # Backup files
+│       └── *_backup_*.cfg                 # Timestamped backups
+│
+├── 🔐 Variables & Credentials
+│   ├── group_vars/
+│   │   ├── all.yml                        # Global variables (EDIT)
+│   │   ├── ios_devices.yml                # IOS device defaults (EDIT)
+│   │   ├── fmc_devices.yml                # Firepower defaults (EDIT)
+│   │   └── all/
+│   │       └── vault_template.yml         # Vault template (COPY & ENCRYPT)
+│   │
+│   └── host_vars/
+│       ├── core-switch-01.yml             # Example switch config (CUSTOMIZE)
+│       ├── core-switch-02.yml
+│       ├── ftd-sensor-01.yml              # Example FTD config (CUSTOMIZE)
+│       └── ftd-sensor-02.yml
+│
+├── 🛠️  Roles (Complete Lifecycle)
+│   │
+│   ├── roles/common/                      [DAY 0: PROVISIONING]
+│   │   ├── tasks/
+│   │   │   └── main.yml                   # Basic system setup
+│   │   ├── handlers/
+│   │   │   └── main.yml                   # Event handlers
+│   │   ├── templates/                     # Jinja2 templates
+│   │   └── vars/
+│   │
+│   ├── roles/ios_config/                  [DAY 1: IOS DEPLOYMENT]
+│   │   ├── tasks/
+│   │   │   └── main.yml                   # Layer 2/3 configuration
+│   │   │                                  # - Interfaces
+│   │   │                                  # - VLANs
+│   │   │                                  # - Trunks
+│   │   │                                  # - OSPF/BGP routing
+│   │   │                                  # - Spanning Tree
+│   │   ├── templates/                     # Configuration templates
+│   │   └── vars/
+│   │
+│   ├── roles/fmc_security/                [DAY 1: FIREPOWER DEPLOYMENT]
+│   │   ├── tasks/
+│   │   │   └── main.yml                   # Firepower configuration
+│   │   │                                  # - Network objects
+│   │   │                                  # - Access control policies
+│   │   │                                  # - NAT rules
+│   │   │                                  # - Security intelligence
+│   │   │                                  # - IPS/IDS policies
+│   │   ├── templates/
+│   │   └── vars/
+│   │
+│   ├── roles/validation/                  [DAY 2: VALIDATION & HEALTH]
+│   │   ├── tasks/
+│   │   │   └── main.yml                   # Health checks
+│   │   │                                  # - OSPF neighbors
+│   │   │                                  # - Interface status
+│   │   │                                  # - CPU/memory
+│   │   │                                  # - Spanning tree
+│   │   ├── templates/
+│   │   │   └── validation_report.j2       # Health report template
+│   │   └── vars/
+│   │
+│   ├── roles/backup/                      [DAY 2: BACKUP & GIT]
+│   │   ├── tasks/
+│   │   │   └── main.yml                   # Configuration backup
+│   │   │                                  # - Local backup
+│   │   │                                  # - Git integration
+│   │   │                                  # - Retention management
+│   │   ├── templates/
+│   │   └── vars/
+│   │
+│   └── roles/maintenance/                 [MAINTENANCE: OS UPGRADE]
+│       ├── tasks/
+│       │   └── main.yml                   # OS upgrade process
+│       │                                  # - Pre-upgrade validation
+│       │                                  # - Image download
+│       │                                  # - Device reload
+│       │                                  # - Post-upgrade validation
+│       ├── templates/
+│       │   └── upgrade_report.j2          # Upgrade report template
+│       └── vars/
+│
+├── 📊 Outputs & Reports
+│   ├── logs/
+│   │   ├── ansible.log                    # Ansible execution log
+│   │   ├── audit.log                      # Audit trail
+│   │   ├── validation_report_*.txt        # Validation reports
+│   │   ├── compliance_report_*.html       # Compliance reports
+│   │   └── upgrade_report_*.txt           # Upgrade reports
+│   │
+│   ├── facts/
+│   │   └── *_facts.json                   # Device facts (JSON)
+│   │
+│   └── reports/
+│       ├── inventory_*.html               # Inventory reports
+│       └── execution_summary_*.html       # Execution summaries
+│
+└── 🚀 Quick References
+    ├── Day 0:  ansible-playbook site.yml --tags day0
+    ├── Day 1:  ansible-playbook site.yml --tags day1
+    ├── Day 2:  ansible-playbook site.yml --tags day2
+    ├── Backup: ansible-playbook playbooks/backup.yml
+    ├── Drift:  ansible-playbook playbooks/drift_detection.yml
+    └── Full:   ansible-playbook site.yml
+```
+
+## 📌 Key Files to Customize
+
+1. **inventory.ini** - Device hostnames and IP addresses
+2. **group_vars/all.yml** - Global settings (NTP, DNS, AAA servers)
+3. **group_vars/ios_devices.yml** - IOS device defaults
+4. **group_vars/fmc_devices.yml** - Firepower defaults
+5. **group_vars/all/vault.yml** - Encrypted credentials (CREATE THIS)
+6. **host_vars/core-switch-01.yml** - Your switch configuration
+7. **host_vars/ftd-sensor-01.yml** - Your FTD configuration
+
+## 🔒 Security Files (NEVER COMMIT)
+
+- `group_vars/all/vault.yml` - Keep encrypted and secure
+- `.vault_pass` - Store locally, never commit
+- SSH private keys - Use key-based authentication
+
+## 📂 Working Directories
+
+- `logs/` - Playbook execution logs and reports
+- `backups/` - Device configuration backups
+- `facts/` - Device facts in JSON format
+- `reports/` - Generated HTML reports

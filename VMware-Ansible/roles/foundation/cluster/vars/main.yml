@@ -1,0 +1,9 @@
+---
+# ==============================================================================
+# Cluster Role - Vars
+# ==============================================================================
+
+cluster_state: "present"  # Options: present, absent
+enable_drs_default: true
+enable_ha_default: true
+ha_vm_monitoring: "vmAndAppMonitoring"

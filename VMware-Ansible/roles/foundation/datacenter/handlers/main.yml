@@ -1,0 +1,8 @@
+---
+# ==============================================================================
+# Datacenter Role - Handlers
+# ==============================================================================
+
+- name: Refresh datacenter facts
+  debug:
+    msg: "Datacenter information refreshed"

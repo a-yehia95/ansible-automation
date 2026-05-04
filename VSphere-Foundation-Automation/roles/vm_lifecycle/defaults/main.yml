@@ -1,0 +1,17 @@
+---
+# ==============================================================================
+# Role: vm_lifecycle - Defaults
+# ==============================================================================
+
+vm_power_state: "present"
+vm_names: []
+vm_state: "present"
+
+# VM Update
+vm_cpu_update_enabled: false
+vm_memory_update_enabled: false
+vm_tag_enabled: false
+
+# VM Deletion
+vm_delete_enabled: false
+vms_to_delete: []

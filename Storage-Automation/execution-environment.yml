@@ -1,0 +1,35 @@
+# ==============================================================================
+# Ansible Automation Platform - Execution Environment Definition
+# ==============================================================================
+# Purpose: Define container image for Storage Automation project
+# This builds a custom EE with required Python packages and collections
+#
+# Build: podman build -f execution-environment.yml -t storage-automation-ee
+# Push:  podman push storage-automation-ee quay.io/your-org/storage-automation-ee
+# ==============================================================================
+
+---
+version: 1
+
+build_arg_defaults:
+  EE_BASE_IMAGE: 'quay.io/ansible/creator-base:latest'
+
+dependencies:
+  galaxy: requirements.yml
+  python: requirements.txt
+  system: system-requirements.txt
+
+images:
+  base_image:
+    name: quay.io/ansible/creator-base:latest
+
+additional_build_steps:
+  prepend: |
+    RUN echo "Building Storage Automation Execution Environment"
+  append: |
+    RUN echo "Storage Automation EE ready"
+    RUN ansible-galaxy collection list
+
+# Optional: Add credentials
+# You can add your own base image with pre-configured credentials
+# but this is NOT recommended - keep EE generic, pass creds at runtime

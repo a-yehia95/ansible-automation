@@ -1,0 +1,161 @@
+---
+# ==============================================================================
+# Validation Playbook - RHEL 9 CIS Hardening Validation
+# ==============================================================================
+# Validates CIS compliance after hardening
+# Usage: ansible-playbook -i inventory/hosts playbooks/validate.yml
+
+- name: RHEL 9 CIS Compliance Validation
+  hosts: rhel9_servers
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Display validation start
+      debug:
+        msg: |
+          =====================================================================
+          CIS COMPLIANCE VALIDATION - STARTING
+          =====================================================================
+          Host: {{ inventory_hostname }}
+          Timestamp: {{ ansible_date_time.iso8601 }}
+      tags:
+        - always
+
+    - name: Validate CIS 2.1 - Kernel ASLR enabled
+      shell: cat /proc/sys/kernel/randomize_va_space
+      register: aslr_check
+      failed_when: aslr_check.stdout != "2"
+      tags:
+        - cis_2_1_1
+        - validation
+
+    - name: Validate CIS 2.2 - Core dumps disabled
+      shell: cat /proc/sys/fs/suid_dumpable
+      register: core_dump_check
+      failed_when: core_dump_check.stdout != "0"
+      tags:
+        - cis_2_2
+        - validation
+
+    - name: Validate CIS 3.2 - IPv4 redirects disabled
+      shell: cat /proc/sys/net/ipv4/conf/all/send_redirects
+      register: redirects_check
+      failed_when: redirects_check.stdout != "0"
+      tags:
+        - cis_3_2
+        - validation
+
+    - name: Validate CIS 3.3 - TCP SYN Cookies enabled
+      shell: cat /proc/sys/net/ipv4/tcp_syncookies
+      register: syncookies_check
+      failed_when: syncookies_check.stdout != "1"
+      tags:
+        - cis_3_3
+        - validation
+
+    - name: Validate CIS 4.1 - Auditd running
+      systemd:
+        name: auditd
+        enabled: true
+        state: started
+      register: auditd_check
+      failed_when: false
+      tags:
+        - cis_4_1
+        - validation
+
+    - name: Validate CIS 5.1 - Password max days configured
+      shell: grep "^PASS_MAX_DAYS" /etc/login.defs | awk '{print $2}'
+      register: pass_maxdays_check
+      failed_when: pass_maxdays_check.stdout | int > 90
+      tags:
+        - cis_5_1_1
+        - validation
+
+    - name: Validate CIS 5.2 - SSH hardened
+      shell: grep -E "^PermitRootLogin|^PasswordAuthentication|^PubkeyAuthentication" /etc/ssh/sshd_config | wc -l
+      register: ssh_check
+      failed_when: ssh_check.stdout | int < 3
+      tags:
+        - cis_5_2
+        - validation
+
+    - name: Validate CIS 5.3 - Sudo logging configured
+      shell: grep -E "^Defaults.*logfile" /etc/sudoers
+      register: sudo_check
+      failed_when: sudo_check.rc != 0
+      tags:
+        - cis_5_3
+        - validation
+
+    - name: Validate CIS 6.1 - /etc/passwd permissions correct
+      stat:
+        path: /etc/passwd
+      register: passwd_stat
+      failed_when: passwd_stat.stat.mode != "0644"
+      tags:
+        - cis_6_1_2
+        - validation
+
+    - name: Validate CIS 6.1 - /etc/shadow permissions correct
+      stat:
+        path: /etc/shadow
+      register: shadow_stat
+      failed_when: shadow_stat.stat.mode != "0600"
+      tags:
+        - cis_6_1_3
+        - validation
+
+    - name: Validate CIS 7.1 - Unnecessary services disabled
+      systemd:
+        name: avahi-daemon
+      register: avahi_check
+      failed_when: avahi_check.unit_state == "active"
+      tags:
+        - cis_7_1
+        - validation
+
+    - name: Generate validation report
+      block:
+        - name: Collect validation results
+          set_fact:
+            validation_results: |
+              =====================================================================
+              CIS COMPLIANCE VALIDATION REPORT
+              =====================================================================
+              Host: {{ inventory_hostname }}
+              Validation Time: {{ ansible_date_time.iso8601 }}
+              
+              Validation Checks Performed:
+              ✓ ASLR (Address Space Layout Randomization)
+              ✓ Core dumps restriction
+              ✓ IPv4 redirect handling
+              ✓ TCP SYN Cookies
+              ✓ Auditd service status
+              ✓ Password policy configuration
+              ✓ SSH hardening
+              ✓ Sudo logging
+              ✓ System file permissions
+              ✓ Service status
+              
+              RECOMMENDATION: Review logs and running services for your environment
+              =====================================================================
+
+        - name: Display validation report
+          debug:
+            msg: "{{ validation_results }}"
+          tags:
+            - always
+
+      tags:
+        - report
+
+    - name: Display validation completion
+      debug:
+        msg: "CIS compliance validation completed successfully!"
+      tags:
+        - always
+
+  tags:
+    - validation

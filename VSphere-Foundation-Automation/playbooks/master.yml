@@ -1,0 +1,153 @@
+---
+# ==============================================================================
+# Master Playbook - VMware vSphere Foundation Automation
+# ==============================================================================
+# Purpose: Orchestrate the entire vSphere Foundation deployment lifecycle
+# Usage: ansible-playbook master.yml --vault-password-file .vault_pass
+# Tags: --tags day0,day1,day2 or specific tags
+
+- name: VMware vSphere Foundation Automation
+  hosts: vcenter_servers
+  gather_facts: no
+  connection: local
+
+  pre_tasks:
+    - name: Display execution context
+      debug:
+        msg: |
+          =====================================================================
+          VMware vSphere Foundation Automation - Master Playbook
+          =====================================================================
+          Environment: {{ environment_name }}
+          vCenter: {{ vcenter_hostname }}
+          Target Hosts: {{ groups['vcenter_servers'] | default([]) | length }} vCenter(s)
+          Execution Date: {{ ansible_date_time.iso8601 }}
+          Playbook: {{ playbook }}
+          =====================================================================
+      tags:
+        - always
+        - info
+
+  roles:
+    # Pre-flight checks
+    - role: vcenter_init
+      tags:
+        - day0
+        - always
+        - init
+
+  tasks:
+    # DAY 0 - FOUNDATION OPERATIONS
+    # ===================================================================
+    - name: DAY 0 Foundation Operations
+      block:
+        - name: Execute datacenter configuration
+          include_role:
+            name: datacenter_config
+          tags:
+            - day0
+            - foundation
+
+        - name: Execute cluster management
+          include_role:
+            name: cluster_management
+          tags:
+            - day0
+            - foundation
+
+        - name: Execute ESXi host management
+          include_role:
+            name: esxi_host_management
+          tags:
+            - day0
+            - foundation
+
+        - name: Execute datastore management
+          include_role:
+            name: datastore_management
+          tags:
+            - day0
+            - foundation
+
+      when: "'day0_operations' in group_names"
+      tags:
+        - day0
+        - foundation
+
+    # DAY 1 - PROVISIONING OPERATIONS
+    # ===================================================================
+    - name: DAY 1 Provisioning Operations
+      block:
+        - name: Execute resource pool management
+          include_role:
+            name: resource_pool_management
+          tags:
+            - day1
+            - provisioning
+
+        - name: Execute network configuration
+          include_role:
+            name: network_config
+          tags:
+            - day1
+            - provisioning
+
+        - name: Execute VM provisioning
+          include_role:
+            name: vm_provisioning
+          tags:
+            - day1
+            - provisioning
+
+      when: "'day1_operations' in group_names"
+      tags:
+        - day1
+        - provisioning
+
+    # DAY 2 - ADMINISTRATION OPERATIONS
+    # ===================================================================
+    - name: DAY 2 Administration Operations
+      block:
+        - name: Execute VM lifecycle management
+          include_role:
+            name: vm_lifecycle
+          tags:
+            - day2
+            - administration
+
+        - name: Execute VM snapshot management
+          include_role:
+            name: vm_snapshots
+          tags:
+            - day2
+            - administration
+
+      when: "'day2_operations' in group_names"
+      tags:
+        - day2
+        - administration
+
+  post_tasks:
+    - name: Execution summary
+      debug:
+        msg: |
+          =====================================================================
+          VMware vSphere Foundation Automation - Execution Complete
+          =====================================================================
+          Status: SUCCESS
+          Completion Date: {{ ansible_date_time.iso8601 }}
+          Duration: {{ (ansible_date_time.epoch | int - ansible_date_time.epoch_start | int) }} seconds
+          =====================================================================
+      tags:
+        - always
+        - summary
+
+    - name: Generate execution report
+      template:
+        src: execution_report.j2
+        dest: "{{ playbook_dir }}/logs/execution_report_{{ ansible_date_time.date }}_{{ ansible_date_time.time }}.html"
+        mode: '0644'
+      changed_when: false
+      tags:
+        - always
+        - reporting

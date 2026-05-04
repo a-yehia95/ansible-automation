@@ -1,0 +1,39 @@
+---
+# ==============================================================================
+# Common Role - SELinux Configuration
+# ==============================================================================
+
+- name: Install policycoreutils packages
+  dnf:
+    name:
+      - policycoreutils
+      - policycoreutils-python-utils
+      - selinux-policy
+    state: present
+  register: selinux_pkgs
+  changed_when: selinux_pkgs.changed
+
+- name: Check current SELinux status
+  command: getenforce
+  register: selinux_status
+  changed_when: false
+  failed_when: false
+
+- name: Disable SELinux (set to permissive)
+  block:
+    - name: Set SELinux to permissive mode
+      selinux:
+        policy: "{{ selinux_policy }}"
+        state: "{{ selinux_state }}"
+      register: selinux_result
+      when: selinux_status.stdout != "Permissive"
+
+    - name: Display SELinux status
+      debug:
+        msg: "SELinux set to {{ selinux_state }} (requires reboot for enforcing)"
+
+- name: Disable SELinux in current session
+  command: setenforce 0
+  changed_when: false
+  failed_when: false
+  when: selinux_status.stdout != "Permissive"

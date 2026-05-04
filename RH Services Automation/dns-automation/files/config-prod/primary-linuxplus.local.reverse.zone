@@ -1,0 +1,55 @@
+$TTL 3H
+@	IN SOA	 services.linuxplus.local.  admin.linuxplus.local. (
+					0	; serial
+					1D	; refresh
+					1H	; retry
+					1W	; expire
+					3H )	; minimum
+
+; Name Servers
+@       IN  NS   services.linuxplus.local.
+
+; PTR Records
+
+99    IN  PTR  services.linuxplus.local.
+
+10    IN  PTR  racdb1.linuxplus.local.
+20    IN  PTR  racdb2.linuxplus.local.
+11    IN  PTR  racdb1-vip.linuxplus.local.
+21    IN  PTR  racdb2-vip.linuxplus.local.
+30    IN  PTR  racdb-scan.linuxplus.local.
+31    IN  PTR  racdb-scan.linuxplus.local.
+32    IN  PTR  racdb-scan.linuxplus.local.
+
+110    IN  PTR  racdg1.linuxplus.local.
+120    IN  PTR  racdg2.linuxplus.local.
+111    IN  PTR  racdg1-vip.linuxplus.local.
+121    IN  PTR  racdg2-vip.linuxplus.local.
+130    IN  PTR  racdg-scan.linuxplus.local.
+131    IN  PTR  racdg-scan.linuxplus.local.
+132    IN  PTR  racdg-scan.linuxplus.local.
+
+25     IN  PTR  oem.linuxplus.local.
+
+200   IN  PTR  ovirt.linuxplus.local.
+201   IN  PTR  kvm1.linuxplus.local.
+202   IN  PTR  kvm2.linuxplus.local.  
+
+
+210    IN  PTR  rac9db1.linuxplus.local.
+220    IN  PTR  rac9db2.linuxplus.local.
+211    IN  PTR  rac9db1-vip.linuxplus.local.
+221    IN  PTR  rac9db2-vip.linuxplus.local.
+230    IN  PTR  rac9db-scan.linuxplus.local.
+231    IN  PTR  rac9db-scan.linuxplus.local.
+232    IN  PTR  rac9db-scan.linuxplus.local.
+
+
+31.98.100.10.in-addr.arpa. 	IN  PTR   api.hacluster.linuxplus.local.      
+32.98.100.10.in-addr.arpa.      IN  PTR   api-int.hacluster.linuxplus.local.      
+
+10.98.100.10.in-addr.arpa.      IN  PTR   control-plane01.hacluster.linuxplus.local.          
+20.98.100.10.in-addr.arpa.      IN  PTR   control-plane02.hacluster.linuxplus.local. 
+30.98.100.10.in-addr.arpa.      IN  PTR   control-plane03.hacluster.linuxplus.local.          
+40.98.100.10.in-addr.arpa.      IN  PTR   worker01.hacluster.linuxplus.local. 
+50.98.100.10.in-addr.arpa.      IN  PTR   worker02.hacluster.linuxplus.local. 

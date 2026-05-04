@@ -1,0 +1,352 @@
+---
+# ==============================================================================
+# Load Balancer Role - Main Task File
+# ==============================================================================
+# Purpose: Configure HAProxy and Keepalived for Kubernetes API Server HA
+# ==============================================================================
+
+- name: Install HAProxy
+  block:
+    - name: Install HAProxy package
+      dnf:
+        name: haproxy
+        state: present
+      register: haproxy_install
+      changed_when: haproxy_install.changed
+
+    - name: Create HAProxy configuration directory
+      file:
+        path: /etc/haproxy
+        state: directory
+        mode: "0755"
+
+    - name: Deploy HAProxy configuration
+      template:
+        src: haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+        mode: "0644"
+        owner: root
+        group: root
+      register: haproxy_config
+      changed_when: haproxy_config.changed
+      notify: Restart haproxy
+
+    - name: Enable and start HAProxy
+      service:
+        name: haproxy
+        enabled: yes
+        state: started
+      register: haproxy_service
+      changed_when: haproxy_service.changed
+
+- name: Install Keepalived
+  block:
+    - name: Install Keepalived package
+      dnf:
+        name: keepalived
+        state: present
+      register: keepalived_install
+      changed_when: keepalived_install.changed
+
+    - name: Create Keepalived configuration directory
+      file:
+        path: /etc/keepalived
+        state: directory
+        mode: "0755"
+
+    - name: Deploy Keepalived configuration
+      template:
+        src: keepalived.conf.j2
+        dest: /etc/keepalived/keepalived.conf
+        mode: "0644"
+        owner: root
+        group: root
+      register: keepalived_config
+      changed_when: keepalived_config.changed
+      notify: Restart keepalived
+
+    - name: Enable and start Keepalived
+      service:
+        name: keepalived
+        enabled: yes
+        state: started
+      register: keepalived_service
+      changed_when: keepalived_service.changed
+
+# ==============================================================================
+# SECTION 2: Configure HAProxy
+# ==============================================================================
+
+- name: Create HAProxy configuration directory
+  file:
+    path: /etc/haproxy
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - loadbalancer
+    - haproxy
+
+- name: Generate HAProxy configuration
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: '0644'
+    backup: yes
+  notify: Restart haproxy
+  tags:
+    - loadbalancer
+    - haproxy
+
+# ==============================================================================
+# SECTION 3: Enable and Start HAProxy
+# ==============================================================================
+
+- name: Enable HAProxy service
+  systemd:
+    name: haproxy
+    enabled: yes
+    daemon_reload: yes
+  tags:
+    - loadbalancer
+    - haproxy
+
+- name: Start HAProxy service
+  systemd:
+    name: haproxy
+    state: started
+  tags:
+    - loadbalancer
+    - haproxy
+
+# ==============================================================================
+# SECTION 4: Configure Keepalived for Virtual IP
+# ==============================================================================
+
+- name: Create keepalived configuration directory
+  file:
+    path: /etc/keepalived
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - loadbalancer
+    - keepalived
+
+- name: Generate Keepalived configuration for primary load balancer
+  template:
+    src: keepalived-primary.cfg.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: '0644'
+    backup: yes
+  when: inventory_hostname == groups['loadbalancer'][0]
+  notify: Restart keepalived
+  tags:
+    - loadbalancer
+    - keepalived
+
+- name: Generate Keepalived configuration for backup load balancer
+  template:
+    src: keepalived-backup.cfg.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: '0644'
+    backup: yes
+  when: 
+    - inventory_hostname in groups['loadbalancer']
+    - inventory_hostname != groups['loadbalancer'][0]
+  notify: Restart keepalived
+  tags:
+    - loadbalancer
+    - keepalived
+
+# ==============================================================================
+# SECTION 5: Enable Keepalived IP Forwarding
+# ==============================================================================
+
+- name: Enable IP forwarding for keepalived
+  sysctl:
+    name: "{{ item }}"
+    value: "1"
+    state: present
+    sysctl_set: yes
+  loop:
+    - net.ipv4.ip_forward
+    - net.ipv4.ip_nonlocal_bind
+  notify: Reload sysctl
+  tags:
+    - loadbalancer
+    - keepalived
+    - network
+
+# ==============================================================================
+# SECTION 6: Create Keepalived Health Check Script
+# ==============================================================================
+
+- name: Create health check script directory
+  file:
+    path: /usr/local/bin
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - loadbalancer
+    - health-check
+
+- name: Create API server health check script
+  copy:
+    content: |
+      #!/bin/bash
+      # Health check script for Kubernetes API server
+      
+      /usr/bin/curl -s --max-time 2 --cacert {{ ssl_cert_path }}/ca.pem \
+        https://{{ ansible_default_ipv4.address }}:6443/livez > /dev/null
+      
+      if [ $? -eq 0 ]; then
+        exit 0
+      else
+        exit 1
+      fi
+    dest: /usr/local/bin/check-apiserver.sh
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - loadbalancer
+    - health-check
+
+# ==============================================================================
+# SECTION 7: Enable and Start Keepalived
+# ==============================================================================
+
+- name: Enable Keepalived service
+  systemd:
+    name: keepalived
+    enabled: yes
+    daemon_reload: yes
+  tags:
+    - loadbalancer
+    - keepalived
+
+- name: Start Keepalived service
+  systemd:
+    name: keepalived
+    state: started
+  tags:
+    - loadbalancer
+    - keepalived
+
+# ==============================================================================
+# SECTION 8: Verify Load Balancer Configuration
+# ==============================================================================
+
+- name: Wait for HAProxy to be ready
+  wait_for:
+    port: 6443
+    delay: 5
+    timeout: 30
+  tags:
+    - loadbalancer
+    - verify
+
+- name: Test load balancer connectivity
+  shell: |
+    /usr/bin/curl -s --max-time 2 --cacert {{ ssl_cert_path }}/ca.pem \
+      https://{{ loadbalancer_vip }}:6443/livez 2>/dev/null || echo "checking..."
+  retries: 10
+  delay: 5
+  register: lb_health
+  tags:
+    - loadbalancer
+    - verify
+
+- name: Display HAProxy stats
+  shell: echo "show stat" | socat stdio /run/haproxy/admin.sock 2>/dev/null || echo "HAProxy running"
+  register: haproxy_stats
+  changed_when: false
+  tags:
+    - loadbalancer
+    - verify
+
+- name: Verify VIP is assigned
+  shell: ip addr show | grep "{{ loadbalancer_vip }}" || echo "VIP not yet assigned"
+  register: vip_status
+  when: inventory_hostname == groups['loadbalancer'][0]
+  tags:
+    - loadbalancer
+    - verify
+
+- name: Display VIP status
+  debug:
+    msg: "{{ vip_status.stdout_lines }}"
+  when: inventory_hostname == groups['loadbalancer'][0]
+  tags:
+    - loadbalancer
+    - verify
+
+# ==============================================================================
+# SECTION 9: Monitoring and Logging
+# ==============================================================================
+
+- name: Enable HAProxy logging
+  lineinfile:
+    path: /etc/haproxy/haproxy.cfg
+    insertafter: 'global'
+    line: "  log 127.0.0.1 local0"
+  notify: Restart haproxy
+  tags:
+    - loadbalancer
+    - logging
+
+- name: Configure rsyslog for HAProxy logs (Debian)
+  copy:
+    content: |
+      :programname, isequal, "haproxy" /var/log/haproxy.log
+      & stop
+    dest: /etc/rsyslog.d/99-haproxy.conf
+  when: ansible_os_family == "Debian"
+  notify: Restart rsyslog
+  tags:
+    - loadbalancer
+    - logging
+
+- name: Configure rsyslog for HAProxy logs (RedHat)
+  copy:
+    content: |
+      :programname, isequal, "haproxy" /var/log/haproxy.log
+      & stop
+    dest: /etc/rsyslog.d/99-haproxy.conf
+  when: ansible_os_family == "RedHat"
+  notify: Restart rsyslog
+  tags:
+    - loadbalancer
+    - logging
+
+# ==============================================================================
+# SECTION 10: Firewall Configuration for Load Balancer
+# ==============================================================================
+
+- name: Allow API server port through firewall (firewalld)
+  firewalld:
+    port: "{{ item }}/tcp"
+    permanent: yes
+    state: enabled
+  loop:
+    - "6443"
+    - "80"
+    - "443"
+  when: 
+    - ansible_os_family == "RedHat"
+    - firewalld_enabled | default(false)
+  notify: Reload firewall
+  tags:
+    - loadbalancer
+    - firewall

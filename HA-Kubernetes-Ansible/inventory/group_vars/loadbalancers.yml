@@ -1,0 +1,28 @@
+---
+# ==============================================================================
+# Configuration for Load Balancer Nodes (HAProxy + Keepalived)
+# ==============================================================================
+
+# Keepalived Configuration
+keepalived_enabled: true
+keepalived_state: MASTER          # Will be overridden per node
+keepalived_virtual_router_id: 51
+keepalived_auth_type: PASS
+keepalived_auth_pass: k8sHApwd123
+
+# HAProxy Configuration
+haproxy_enabled: true
+haproxy_listen_port: 6443
+haproxy_timeout_connect: 5000
+haproxy_timeout_server: 50000
+haproxy_timeout_client: 50000
+haproxy_retries: 3
+
+# VIP Configuration
+vip_interface: eth0
+vip_address: "{{ control_plane_vip }}"
+vip_subnet_mask: 24
+
+# Health Check Configuration
+health_check_interval: 5
+health_check_timeout: 2

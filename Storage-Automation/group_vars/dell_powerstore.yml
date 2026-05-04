@@ -1,0 +1,39 @@
+---
+# ==============================================================================
+# Dell PowerStore - Global Configuration
+# ==============================================================================
+# Configuration variables for Dell PowerStore operations
+# These variables are used by all Dell PowerStore playbooks
+# ==============================================================================
+
+# Authentication (should be overridden in vault.yml for production)
+powerstore_rest_api_username: "{{ vault_powerstore_username }}"
+powerstore_rest_api_password: "{{ vault_powerstore_password }}"
+
+# Array Information
+powerstore_rest_api_gateway: "{{ inventory_hostname }}"
+powerstore_rest_api_port: 443
+powerstore_verify_ssl_certificate: false
+
+# Host Registration Settings
+powerstore_host_protocol: "iSCSI"     # iSCSI, FC, NVMe
+powerstore_host_os_type: "Linux"      # Linux, Windows, ESXi, etc.
+
+# Volume Settings
+powerstore_volume_defaults:
+  size_mb: 102400                     # Default 100GB in MB
+  provisioning_type: "thin"           # thin or thick
+  description: "Created via Ansible"
+
+# Snapshot Settings
+powerstore_snapshot_defaults:
+  description: "Snapshot created via Ansible"
+  expiration_time: null               # null = never expire
+
+# Performance/Behavior
+powerstore_api_retries: 3
+powerstore_api_retry_delay: 5
+
+# Logging
+powerstore_enable_logging: true
+powerstore_log_level: "INFO"

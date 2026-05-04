@@ -1,0 +1,253 @@
+---
+# ==============================================================================
+# Role: cis_firewall_network - Firewall and Network Security Configuration
+# ==============================================================================
+# Purpose: Configure firewalld/iptables and hardened network parameters
+
+- name: CIS 3.1 - Disable IPv6 (if not needed)
+  block:
+    - name: Disable IPv6 in kernel parameters (CIS 3.1.1)
+      lineinfile:
+        path: /etc/sysctl.conf
+        line: "net.ipv6.conf.all.disable_ipv6 = 1"
+        state: present
+      when: not cis_firewall_network.ipv6_ra_enabled
+      notify: sysctl refresh
+      tags:
+        - cis_3_1_1
+        - ipv6
+
+    - name: Disable IPv6 for lo (CIS 3.1.2)
+      lineinfile:
+        path: /etc/sysctl.conf
+        line: "net.ipv6.conf.lo.disable_ipv6 = 1"
+        state: present
+      when: not cis_firewall_network.ipv6_ra_enabled
+      notify: sysctl refresh
+      tags:
+        - cis_3_1_2
+        - ipv6
+
+  tags:
+    - cis_3_1
+    - ipv6
+
+- name: CIS 3.2 - Disable IPv4 packet redirects
+  block:
+    - name: Disable IPv4 send redirects (CIS 3.2.1)
+      sysctl:
+        name: "{{ item }}"
+        value: "0"
+        state: present
+        sysctl_set: true
+      loop:
+        - net.ipv4.conf.all.send_redirects
+        - net.ipv4.conf.default.send_redirects
+      tags:
+        - cis_3_2_1
+        - ipv4_redirects
+
+    - name: Disable IPv4 accept redirects (CIS 3.2.2)
+      sysctl:
+        name: "{{ item }}"
+        value: "0"
+        state: present
+        sysctl_set: true
+      loop:
+        - net.ipv4.conf.all.accept_redirects
+        - net.ipv4.conf.default.accept_redirects
+        - net.ipv4.conf.all.secure_redirects
+        - net.ipv4.conf.default.secure_redirects
+      tags:
+        - cis_3_2_2
+        - ipv4_redirects
+
+    - name: Display IPv4 redirect configuration
+      debug:
+        msg: "IPv4 send and accept redirects disabled"
+      tags:
+        - ipv4_redirects
+        - always
+
+  tags:
+    - cis_3_2
+    - network_security
+
+- name: CIS 3.3 - Enable IPv4 TCP SYN Cookies
+  block:
+    - name: Enable TCP SYN Cookies (CIS 3.3.1)
+      sysctl:
+        name: net.ipv4.tcp_syncookies
+        value: "1"
+        state: present
+        sysctl_set: true
+      tags:
+        - cis_3_3_1
+        - tcp_syncookies
+
+    - name: Display TCP SYN Cookies configuration
+      debug:
+        msg: "IPv4 TCP SYN Cookies enabled for DDoS protection"
+      tags:
+        - tcp_syncookies
+        - always
+
+  tags:
+    - cis_3_3
+    - network_security
+
+- name: CIS 3.4 - Disable IPv4 forwarding
+  block:
+    - name: Disable IP forwarding (CIS 3.4.1)
+      sysctl:
+        name: "{{ item }}"
+        value: "0"
+        state: present
+        sysctl_set: true
+      loop:
+        - net.ipv4.ip_forward
+        - net.ipv4.conf.all.forwarding
+      tags:
+        - cis_3_4_1
+        - ip_forwarding
+
+    - name: Display IP forwarding configuration
+      debug:
+        msg: "IPv4 IP forwarding disabled"
+      tags:
+        - ip_forwarding
+        - always
+
+  tags:
+    - cis_3_4
+    - network_security
+
+- name: CIS 3.5 - Configure firewalld
+  block:
+    - name: Install firewalld (CIS 3.5.1)
+      package:
+        name: firewalld
+        state: present
+      tags:
+        - cis_3_5_1
+        - firewall
+
+    - name: Enable and start firewalld (CIS 3.5.2)
+      systemd:
+        name: firewalld
+        enabled: "{{ cis_firewall_network.firewall_startup_enabled }}"
+        state: "{{ 'started' if cis_firewall_network.firewall_enabled else 'stopped' }}"
+      tags:
+        - cis_3_5_2
+        - firewall
+
+    - name: Set default zone to {{ cis_firewall_network.default_zone }} (CIS 3.5.3)
+      firewalld:
+        zone: "{{ cis_firewall_network.default_zone }}"
+        state: present
+        permanent: true
+      tags:
+        - cis_3_5_3
+        - firewall
+
+    - name: Allow SSH through firewall (CIS 3.5.4)
+      firewalld:
+        service: ssh
+        permanent: true
+        state: enabled
+      notify: firewall reload
+      tags:
+        - cis_3_5_4
+        - firewall
+        - ssh
+
+    - name: Reload firewall configuration
+      listen: "firewall reload"
+      command: firewall-cmd --reload
+      tags:
+        - firewall
+
+    - name: Display firewall configuration
+      debug:
+        msg: "Firewalld configured - Zone: {{ cis_firewall_network.default_zone }}, SSH allowed"
+      tags:
+        - firewall
+        - always
+
+  tags:
+    - cis_3_5
+    - firewall_configuration
+
+- name: CIS 3.6 - Configure network parameters
+  block:
+    - name: Disable bogus error response protection (CIS 3.6.1)
+      sysctl:
+        name: net.ipv4.icmp_ignore_bogus_error_responses
+        value: "1"
+        state: present
+        sysctl_set: true
+      tags:
+        - cis_3_6_1
+        - network_params
+
+    - name: Enable bad error message protection (CIS 3.6.2)
+      sysctl:
+        name: "{{ item }}"
+        value: "1"
+        state: present
+        sysctl_set: true
+      loop:
+        - net.ipv4.icmp_echo_ignore_all
+        - net.ipv4.icmp_echo_ignore_broadcasts
+      tags:
+        - cis_3_6_2
+        - network_params
+
+    - name: Configure reverse path filtering (CIS 3.6.3)
+      sysctl:
+        name: "{{ item }}"
+        value: "1"
+        state: present
+        sysctl_set: true
+      loop:
+        - net.ipv4.conf.all.rp_filter
+        - net.ipv4.conf.default.rp_filter
+      tags:
+        - cis_3_6_3
+        - network_params
+
+    - name: Display network parameters configuration
+      debug:
+        msg: "Network parameters hardened for enhanced security"
+      tags:
+        - network_params
+        - always
+
+  tags:
+    - cis_3_6
+    - network_security
+
+- name: Summary - Firewall and Network Security Configuration
+  debug:
+    msg: |
+      =====================================================================
+      Firewall and Network Security Configuration Summary:
+      =====================================================================
+      ✓ IPv6 disabled (if configured)
+      ✓ IPv4 packet redirects disabled
+      ✓ IPv4 TCP SYN Cookies enabled
+      ✓ IP forwarding disabled
+      ✓ Firewalld configured and active
+      ✓ SSH service allowed through firewall
+      ✓ Network parameters hardened
+      ✓ Reverse path filtering enabled
+      =====================================================================
+  tags:
+    - always
+    - firewall_network
+
+- name: Handler - Sysctl refresh
+  listen: "sysctl refresh"
+  command: sysctl -p
+  tags:
+    - network_security

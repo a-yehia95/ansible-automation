@@ -1,0 +1,95 @@
+---
+# ==============================================================================
+# Common Role - Package Installation & Update
+# ==============================================================================
+
+- name: Update package cache and install base packages
+  block:
+    - name: Update all packages
+      dnf:
+        name: "*"
+        state: latest
+      register: dnf_update
+      changed_when: dnf_update.changed
+      when: enable_package_update
+
+    - name: Install essential packages
+      dnf:
+        name:
+          - curl
+          - wget
+          - git
+          - vim
+          - net-tools
+          - ntp
+          - chrony
+          - openssh-clients
+          - openssh-server
+          - openssl
+          - socat
+          - conntrack
+          - ipset
+          - iptables
+          - ebtables
+          - device-mapper-persistent-data
+          - lvm2
+          - iproute
+          - bridge-utils
+        state: present
+      register: base_packages
+      changed_when: base_packages.changed
+
+- name: Install development tools and additional packages
+  block:
+    - name: Install development tools group
+      dnf:
+        name: "@Development Tools"
+        state: present
+      register: dev_tools
+      changed_when: dev_tools.changed
+      failed_when: false
+
+    - name: Install additional system packages
+      dnf:
+        name:
+          - kernel-devel
+          - kernel-headers
+          - grub2-tools
+          - dracut
+        state: present
+      register: additional_packages
+      changed_when: additional_packages.changed
+      failed_when: false
+
+- name: Enable IP forwarding in kernel
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    state: present
+    sysctl_set: yes
+  register: ipforward
+  changed_when: ipforward.changed
+
+- name: Configure DNS resolvers
+  block:
+    - name: Check if /etc/resolv.conf is managed by systemd
+      stat:
+        path: /etc/resolv.conf
+      register: resolv_conf
+
+    - name: Update DNS servers in resolv.conf
+      lineinfile:
+        path: /etc/resolv.conf
+        regexp: "^nameserver"
+        line: "nameserver {{ item }}"
+        state: present
+      loop: "{{ dns_servers }}"
+      register: dns_update
+      changed_when: dns_update.changed
+
+- name: Display installed packages summary
+  debug:
+    msg:
+      - "✓ Base packages installed"
+      - "✓ Development tools installed"
+      - "✓ System ready for Kubernetes deployment"

@@ -1,0 +1,32 @@
+---
+# ==============================================================================
+# Configuration for Master Nodes (Control Plane)
+# ==============================================================================
+
+# Master Node Roles
+node_role: master
+
+# etcd Configuration
+etcd_initial_cluster_state: new
+etcd_initial_cluster_token: etcd-cluster
+
+# Kubernetes API Server Configuration
+apiserver_advertise_address: "{{ ansible_host }}"
+apiserver_bind_port: 6443
+
+# Kubelet Configuration
+kubelet_node_labels: "node-role.kubernetes.io/control-plane=,node-role.kubernetes.io/master="
+kubelet_node_taints:
+  - "node-role.kubernetes.io/master=:NoSchedule"
+  - "node-role.kubernetes.io/control-plane=:NoSchedule"
+
+# Certificate Configuration
+certificate_key_expiry: 2h
+token_expiry: 24h
+bootstrap_token_ttl: 24h
+
+# kubeadm init configuration
+kubeadm_init_extra_args: "--skip-preflight-checks"
+
+# Pod disruption budgets
+pod_disruption_budgets_enabled: true

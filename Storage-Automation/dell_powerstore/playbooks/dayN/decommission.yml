@@ -1,0 +1,220 @@
+---
+# ==============================================================================
+# Dell PowerStore - Day N: Decommissioning
+# ==============================================================================
+# Purpose: Decommission storage resources (unmap, delete LUNs)
+#
+# WARNING: This playbook performs destructive operations!
+#
+# Prerequisites:
+#   - Day 1 provisioning completed
+#   - LUN mapped to host
+#
+# Variables Required (via --extra-vars):
+#   - lun_name: Name of LUN to decommission
+#   - host_name: Host to unmap LUN from
+#   - confirm_decommission: "yes" (safety confirmation)
+#
+# Idempotency:
+#   - Unmap: Idempotent (multiple unmaps safe)
+#   - Delete: Idempotent (already deleted LUNs ignored)
+#
+# Execution:
+#   ansible-playbook dell_powerstore/playbooks/dayN/decommission.yml \
+#     --extra-vars='lun_name=db-lun-01 host_name=esx-01 \
+#                   confirm_decommission=yes'
+# ==============================================================================
+
+- name: Dell PowerStore - Day N Decommissioning
+  hosts: dell_powerstore
+  gather_facts: false
+  connection: local
+
+  vars:
+    operation_type: "decommission"
+    log_prefix: "[DELL_DAYN]"
+
+  pre_tasks:
+    - name: Display operation warning
+      debug:
+        msg:
+          - "⚠️  WARNING: DESTRUCTIVE OPERATION ⚠️"
+          - "{{ log_prefix }} Starting Dell PowerStore Decommissioning"
+          - "{{ log_prefix }} This will UNMAP and DELETE storage resources"
+          - "{{ log_prefix }} Array: {{ inventory_hostname }}"
+          - "{{ log_prefix }} LUN: {{ lun_name | default('NOT SET') }}"
+          - "{{ log_prefix }} Host: {{ host_name | default('NOT SET') }}"
+
+    - name: Validate required variables and confirmations
+      block:
+        - name: Assert required decommissioning variables
+          assert:
+            that:
+              - lun_name is defined and lun_name | length > 0
+              - host_name is defined and host_name | length > 0
+              - confirm_decommission is defined and confirm_decommission == 'yes'
+            fail_msg: |
+              Missing or invalid required variables for Dell PowerStore decommissioning:
+              - lun_name: {{ lun_name | default('UNDEFINED') }}
+              - host_name: {{ host_name | default('UNDEFINED') }}
+              - confirm_decommission: {{ confirm_decommission | default('UNDEFINED') }} (must be 'yes' to proceed)
+              
+              ⚠️  SAFETY CONFIRMATION REQUIRED ⚠️
+              This is a destructive operation. To proceed:
+              
+              ansible-playbook dell_powerstore/playbooks/dayN/decommission.yml \
+                --extra-vars='lun_name=db-lun-01 \
+                             host_name=esx-01 \
+                             confirm_decommission=yes'
+            success_msg: "{{ log_prefix }} Safety confirmations validated - proceeding with caution"
+
+      rescue:
+        - name: Display validation error
+          debug:
+            msg: "{{ log_prefix }} Validation failed - decommissioning aborted (see error above)"
+        - name: Fail playbook
+          fail:
+            msg: "Decommissioning cancelled - safety confirmation required"
+
+  tasks:
+    # =========================================================================
+    # Phase 1: Unmap LUN from Host
+    # =========================================================================
+    - name: Unmap LUN from host
+      block:
+        - name: Get host details
+          dellemc.powerstore.host_info:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            host_name: "{{ host_name }}"
+          register: host_details
+          no_log: true
+          failed_when: false
+
+        - name: Verify host exists
+          assert:
+            that:
+              - not host_details.failed
+              - host_details.hosts | length > 0
+            fail_msg: "{{ log_prefix }} Host {{ host_name }} not found on array"
+            success_msg: "{{ log_prefix }} Host {{ host_name }} found"
+
+        - name: Extract host ID
+          set_fact:
+            host_id: "{{ host_details.hosts[0].id }}"
+
+        - name: Get LUN details
+          dellemc.powerstore.volume_info:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            volume_name: "{{ lun_name }}"
+          register: lun_info
+          no_log: true
+          failed_when: false
+
+        - name: Verify LUN exists
+          assert:
+            that:
+              - not lun_info.failed
+              - lun_info.volumes | length > 0
+            fail_msg: "{{ log_prefix }} LUN {{ lun_name }} not found on array"
+            success_msg: "{{ log_prefix }} LUN {{ lun_name }} found"
+
+        - name: Extract LUN ID
+          set_fact:
+            lun_id: "{{ lun_info.volumes[0].id }}"
+
+        - name: Check if LUN is mapped to host
+          set_fact:
+            lun_is_mapped: "{{ host_details.hosts[0].volumes | selectattr('id', 'equalto', lun_id) | list }}"
+
+        - name: Display LUN mapping status
+          debug:
+            msg: "{{ log_prefix }} LUN {{ lun_name }} is currently mapped to host {{ host_name }}"
+          when: lun_is_mapped | length > 0
+
+        - name: Disconnect LUN from host
+          dellemc.powerstore.volume_mapping:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            host_id: "{{ host_id }}"
+            volume_id: "{{ lun_id }}"
+            state: absent
+          register: unmapping_result
+          no_log: true
+          when: lun_is_mapped | length > 0
+
+        - name: Display LUN unmapping result
+          debug:
+            msg: "{{ log_prefix }} ✓ LUN {{ lun_name }} unmapped from host {{ host_name }}"
+          when:
+            - lun_is_mapped | length > 0
+            - unmapping_result is changed
+
+        - name: Display no change notice for unmapping
+          debug:
+            msg: "{{ log_prefix }} LUN {{ lun_name }} not currently mapped to host {{ host_name }}"
+          when: lun_is_mapped | length == 0
+
+      rescue:
+        - name: Handle unmapping failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to unmap LUN {{ lun_name }} from host {{ host_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "LUN unmapping failed - halting decommissioning"
+
+    # =========================================================================
+    # Phase 2: Delete LUN from Array
+    # =========================================================================
+    - name: Delete LUN from storage array
+      block:
+        - name: Display LUN deletion status
+          debug:
+            msg: "{{ log_prefix }} Deleting LUN {{ lun_name }} from array"
+
+        - name: Delete LUN
+          dellemc.powerstore.volume:
+            array_ip: "{{ powerstore_rest_api_gateway }}"
+            verifycert: "{{ powerstore_verify_ssl_certificate }}"
+            user: "{{ powerstore_rest_api_username }}"
+            password: "{{ powerstore_rest_api_password }}"
+            vol_name: "{{ lun_name }}"
+            state: absent
+          register: delete_result
+          no_log: true
+
+        - name: Display LUN deletion result
+          debug:
+            msg:
+              - "{{ log_prefix }} ✓ LUN {{ lun_name }} deleted from array"
+              - "{{ log_prefix }} ⚠️  LUN permanently removed from storage"
+          when: delete_result is changed
+
+        - name: Display no change notice for deletion
+          debug:
+            msg: "{{ log_prefix }} LUN {{ lun_name }} not found on array (already deleted)"
+          when: delete_result is not changed
+
+      rescue:
+        - name: Handle deletion failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to delete LUN {{ lun_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "LUN deletion failed"
+
+  post_tasks:
+    - name: Display decommissioning completion
+      debug:
+        msg:
+          - "{{ log_prefix }} ✓ Decommissioning completed"
+          - "{{ log_prefix }} LUN: {{ lun_name }}"
+          - "{{ log_prefix }} Host: {{ host_name }}"
+          - "{{ log_prefix }} Status: Removed from service"

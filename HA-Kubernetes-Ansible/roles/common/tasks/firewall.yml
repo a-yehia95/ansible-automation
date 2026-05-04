@@ -1,0 +1,137 @@
+---
+# ==============================================================================
+# Common Role - Firewall Configuration
+# ==============================================================================
+
+- name: Ensure firewalld is installed
+  dnf:
+    name: firewalld
+    state: present
+  register: firewalld_install
+  changed_when: firewalld_install.changed
+
+- name: Enable and start firewalld
+  service:
+    name: firewalld
+    enabled: yes
+    state: "{{ firewalld_state }}"
+  register: firewalld_service
+  changed_when: firewalld_service.changed
+
+- name: Configure firewall for Kubernetes - Master Nodes
+  block:
+    - name: Open Kubernetes API Server port (TCP 6443)
+      firewalld:
+        port: "6443/tcp"
+        permanent: yes
+        state: enabled
+      register: fw_api_port
+      changed_when: fw_api_port.changed
+
+    - name: Open etcd ports (TCP 2379-2380)
+      firewalld:
+        port: "{{ item }}/tcp"
+        permanent: yes
+        state: enabled
+      loop:
+          - "2379"
+          - "2380"
+      register: fw_etcd_ports
+      changed_when: fw_etcd_ports.changed
+
+    - name: Open kubelet port (TCP 10250)
+      firewalld:
+        port: "10250/tcp"
+        permanent: yes
+        state: enabled
+      register: fw_kubelet_port
+      changed_when: fw_kubelet_port.changed
+
+    - name: Open scheduler port (TCP 10251)
+      firewalld:
+        port: "10251/tcp"
+        permanent: yes
+        state: enabled
+      register: fw_scheduler_port
+      changed_when: fw_scheduler_port.changed
+
+    - name: Open controller manager port (TCP 10252)
+      firewalld:
+        port: "10252/tcp"
+        permanent: yes
+        state: enabled
+      register: fw_controller_port
+      changed_when: fw_controller_port.changed
+
+    - name: Open NodePort services range (TCP 30000-32767)
+      firewalld:
+        port: "30000-32767/tcp"
+        permanent: yes
+        state: enabled
+      register: fw_nodeport_tcp
+      changed_when: fw_nodeport_tcp.changed
+
+    - name: Open Calico BGP port (TCP 5473)
+      firewalld:
+        port: "5473/tcp"
+        permanent: yes
+        state: enabled
+      register: fw_calico_tcp
+      changed_when: fw_calico_tcp.changed
+
+    - name: Open Calico UDP ports
+      firewalld:
+        port: "{{ item }}/udp"
+        permanent: yes
+        state: enabled
+      loop:
+        - "8285"
+        - "8472"
+      register: fw_calico_udp
+      changed_when: fw_calico_udp.changed
+
+  when: inventory_hostname in groups['masters']
+
+- name: Configure firewall for Kubernetes - Worker Nodes
+  block:
+    - name: Open kubelet port (TCP 10250)
+      firewalld:
+        port: "10250/tcp"
+        permanent: yes
+        state: enabled
+      register: fw_worker_kubelet_port
+      changed_when: fw_worker_kubelet_port.changed
+
+    - name: Open NodePort services range (TCP 30000-32767)
+      firewalld:
+        port: "30000-32767/tcp"
+        permanent: yes
+        state: enabled
+      register: fw_worker_nodeport_tcp
+      changed_when: fw_worker_nodeport_tcp.changed
+
+    - name: Open Calico UDP ports
+      firewalld:
+        port: "{{ item }}/udp"
+        permanent: yes
+        state: enabled
+      loop:
+        - "8285"
+        - "8472"
+      register: fw_worker_calico_udp
+      changed_when: fw_worker_calico_udp.changed
+
+  when: inventory_hostname in groups['workers']
+
+- name: Reload firewall to apply changes
+  service:
+    name: firewalld
+    state: restarted
+  register: firewall_reload
+  changed_when: firewall_reload.changed
+
+- name: Verify firewall rules
+  command: firewall-cmd --list-all
+  register: firewall_status
+  changed_when: false
+  failed_when: false

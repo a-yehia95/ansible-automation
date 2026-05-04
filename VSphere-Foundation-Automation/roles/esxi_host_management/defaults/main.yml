@@ -1,0 +1,18 @@
+---
+# ==============================================================================
+# Role: esxi_host_management - Defaults
+# ==============================================================================
+
+esxi_host_port: 443
+esxi_host_username: "root"
+esxi_host_maintenance_mode: false
+esxi_host_power_state: "poweredOn"
+
+# NTP Configuration
+esxi_ntp_servers: []
+
+# SSH Configuration
+esxi_ssh_enabled: true
+
+# Firewall Rules
+esxi_firewall_rules: []

@@ -1,0 +1,10 @@
+#!/bin/bash
+# ==============================================================================
+# Session Timeout Configuration Template
+# ==============================================================================
+# Configures automatic session timeout
+
+readonly TIMEOUT={{ cis_account_policies.session_timeout_seconds }}
+readonly TMOUT=$TIMEOUT
+export TMOUT
+trap 'echo "Session timeout after $TIMEOUT seconds of inactivity"' SIGTERM

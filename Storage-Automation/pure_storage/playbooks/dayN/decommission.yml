@@ -1,0 +1,246 @@
+---
+# ==============================================================================
+# Pure Storage FlashArray - Day N: Decommissioning
+# ==============================================================================
+# Purpose: Decommission storage resources (unmap, destroy, eradicate)
+#
+# WARNING: This playbook performs destructive operations!
+#
+# Prerequisites:
+#   - Day 1 provisioning completed
+#   - Volume mapped to host
+#
+# Variables Required (via --extra-vars):
+#   - volume_name: Name of volume to decommission
+#   - host_name: Host to unmap volume from
+#   - confirm_decommission: "yes" (safety confirmation)
+#   - eradicate: "yes" (two-step: destroy then eradicate, Pure Storage specific)
+#
+# Idempotency:
+#   - Unmap: Idempotent (multiple unmaps safe)
+#   - Destroy/Eradicate: Idempotent (already deleted volumes ignored)
+#
+# Execution:
+#   ansible-playbook pure_storage/playbooks/dayN/decommission.yml \
+#     --extra-vars='volume_name=db-volume-01 host_name=esx-01 \
+#                   confirm_decommission=yes eradicate=yes'
+# ==============================================================================
+
+- name: Pure Storage FlashArray - Day N Decommissioning
+  hosts: pure_storage_flasharray
+  gather_facts: false
+  connection: local
+
+  vars:
+    operation_type: "decommission"
+    log_prefix: "[PURE_DAYN]"
+
+  pre_tasks:
+    - name: Display operation warning
+      debug:
+        msg:
+          - "⚠️  WARNING: DESTRUCTIVE OPERATION ⚠️"
+          - "{{ log_prefix }} Starting Pure Storage Decommissioning"
+          - "{{ log_prefix }} This will UNMAP and DELETE storage resources"
+          - "{{ log_prefix }} Array: {{ inventory_hostname }}"
+          - "{{ log_prefix }} Volume: {{ volume_name | default('NOT SET') }}"
+          - "{{ log_prefix }} Host: {{ host_name | default('NOT SET') }}"
+
+    - name: Validate required variables and confirmations
+      block:
+        - name: Assert required decommissioning variables
+          assert:
+            that:
+              - volume_name is defined and volume_name | length > 0
+              - host_name is defined and host_name | length > 0
+              - confirm_decommission is defined and confirm_decommission == 'yes'
+              - eradicate is defined and eradicate in ['yes', 'no']
+            fail_msg: |
+              Missing or invalid required variables for Pure Storage decommissioning:
+              - volume_name: {{ volume_name | default('UNDEFINED') }}
+              - host_name: {{ host_name | default('UNDEFINED') }}
+              - confirm_decommission: {{ confirm_decommission | default('UNDEFINED') }} (must be 'yes' to proceed)
+              - eradicate: {{ eradicate | default('UNDEFINED') }} (yes or no)
+              
+              ⚠️  SAFETY CONFIRMATION REQUIRED ⚠️
+              This is a destructive operation. To proceed:
+              
+              ansible-playbook pure_storage/playbooks/dayN/decommission.yml \
+                --extra-vars='volume_name=db-volume-01 \
+                             host_name=esx-01 \
+                             confirm_decommission=yes \
+                             eradicate=yes'
+            success_msg: "{{ log_prefix }} Safety confirmations validated - proceeding with caution"
+
+      rescue:
+        - name: Display validation error
+          debug:
+            msg: "{{ log_prefix }} Validation failed - decommissioning aborted (see error above)"
+        - name: Fail playbook
+          fail:
+            msg: "Decommissioning cancelled - safety confirmation required"
+
+  tasks:
+    # =========================================================================
+    # Phase 1: Unmap Volume from Host
+    # =========================================================================
+    - name: Unmap volume from host
+      block:
+        - name: Check if volume is mapped to host
+          purestorage.flasharray.purefa_host_volume_info:
+            host: "{{ host_name }}"
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: host_volumes
+          no_log: true
+          failed_when: false
+
+        - name: Set mapping status
+          set_fact:
+            volume_is_mapped: "{{ volume_name in host_volumes.host_volume | map(attribute='vol') | list if not host_volumes.failed else false }}"
+
+        - name: Display volume mapping status
+          debug:
+            msg: "{{ log_prefix }} Volume {{ volume_name }} is currently mapped to host {{ host_name }}"
+          when: volume_is_mapped
+
+        - name: Disconnect volume from host
+          purestorage.flasharray.purefa_connect:
+            host: "{{ host_name }}"
+            volume: "{{ volume_name }}"
+            state: absent
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: unmapping_result
+          no_log: true
+          when: volume_is_mapped
+
+        - name: Display volume unmapping result
+          debug:
+            msg: "{{ log_prefix }} ✓ Volume {{ volume_name }} unmapped from host {{ host_name }}"
+          when: 
+            - volume_is_mapped
+            - unmapping_result is changed
+
+        - name: Display no change notice for unmapping
+          debug:
+            msg: "{{ log_prefix }} Volume {{ volume_name }} not currently mapped to host {{ host_name }}"
+          when: not volume_is_mapped
+
+      rescue:
+        - name: Handle unmapping failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to unmap volume {{ volume_name }} from host {{ host_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "Volume unmapping failed - halting decommissioning"
+
+    # =========================================================================
+    # Phase 2: Destroy Volume (Pure Storage two-step process)
+    # =========================================================================
+    - name: Destroy volume (Pure Storage two-step process)
+      block:
+        - name: Check if volume exists
+          purestorage.flasharray.purefa_volume_info:
+            name: "{{ volume_name }}"
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: volume_info
+          no_log: true
+          failed_when: false
+
+        - name: Display volume existence status
+          debug:
+            msg: "{{ log_prefix }} Volume {{ volume_name }} found - proceeding with destruction"
+          when: not volume_info.failed
+
+        - name: Destroy volume (step 1 of 2)
+          purestorage.flasharray.purefa_volume:
+            name: "{{ volume_name }}"
+            state: absent
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: destroy_result
+          no_log: true
+          when: not volume_info.failed
+
+        - name: Display volume destruction result
+          debug:
+            msg: "{{ log_prefix }} ✓ Volume {{ volume_name }} destroyed (step 1/2)"
+          when: 
+            - not volume_info.failed
+            - destroy_result is changed
+
+      rescue:
+        - name: Handle destroy failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to destroy volume {{ volume_name }}"
+        - name: Fail playbook
+          fail:
+            msg: "Volume destruction failed - unable to proceed with eradication"
+
+    # =========================================================================
+    # Phase 3: Eradicate Volume (Pure Storage specific - permanent deletion)
+    # =========================================================================
+    - name: Eradicate volume (permanent deletion)
+      block:
+        - name: Display eradication status
+          debug:
+            msg: "{{ log_prefix }} Eradication requested - permanently deleting {{ volume_name }}"
+          when: eradicate == 'yes'
+
+        - name: Eradicate volume (step 2 of 2)
+          purestorage.flasharray.purefa_volume:
+            name: "{{ volume_name }}"
+            eradicate: true
+            state: absent
+            fa_url: "{{ pure_fb_url }}"
+            api_token: "{{ pure_api_token }}"
+            api_version: "{{ pure_api_version }}"
+            validate_certs: "{{ validate_certs }}"
+          register: eradicate_result
+          no_log: true
+          when: eradicate == 'yes'
+
+        - name: Display volume eradication result
+          debug:
+            msg:
+              - "{{ log_prefix }} ✓ Volume {{ volume_name }} eradicated (step 2/2)"
+              - "{{ log_prefix }} ⚠️  Volume permanently deleted from storage array"
+          when: 
+            - eradicate == 'yes'
+            - eradicate_result is changed
+
+        - name: Display eradication skipped
+          debug:
+            msg: "{{ log_prefix }} Eradication skipped - volume remains in destroyed state"
+          when: eradicate == 'no'
+
+      rescue:
+        - name: Handle eradication failure
+          debug:
+            msg: "{{ log_prefix }} ERROR: Failed to eradicate volume {{ volume_name }}"
+        - name: Log partial decommissioning
+          debug:
+            msg: "{{ log_prefix }} WARNING: Volume destroyed but not eradicated - manual cleanup may be needed"
+        - name: Fail playbook
+          fail:
+            msg: "Volume eradication failed"
+
+  post_tasks:
+    - name: Display decommissioning completion
+      debug:
+        msg:
+          - "{{ log_prefix }} ✓ Decommissioning completed"
+          - "{{ log_prefix }} Volume: {{ volume_name }}"
+          - "{{ log_prefix }} Host: {{ host_name }}"
+          - "{{ log_prefix }} Status: Removed from service"
+          - "{{ log_prefix }} Eradication: {{ 'COMPLETED' if eradicate == 'yes' else 'SKIPPED' }}"

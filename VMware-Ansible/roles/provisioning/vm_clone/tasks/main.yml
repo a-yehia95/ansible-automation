@@ -1,0 +1,211 @@
+---
+# ==============================================================================
+# VM Clone Role - Tasks
+# ==============================================================================
+# Clones VMs from templates (Linux and Windows) with placement options
+
+- name: Display VM cloning information
+  debug:
+    msg:
+      - "=========================================="
+      - "VM Provisioning - Clone from Template"
+      - "=========================================="
+      - "vCenter: {{ vcenter_hostname }}"
+      - "State: {{ clone_state }}"
+      - "Template: {{ vm_template }}"
+      - "VM Name: {{ vm_name }}"
+      - "Datacenter: {{ datacenter_name }}"
+      - "=========================================="
+  tags:
+    - day1
+    - provisioning
+    - clone
+    - always
+
+# ==============================================================================
+# Validate Input Variables
+# ==============================================================================
+
+- name: Validate required variables
+  assert:
+    that:
+      - vm_name is defined
+      - vm_name != ''
+      - vm_template is defined
+      - vm_template != ''
+      - datacenter_name is defined
+      - datacenter_name != ''
+    fail_msg: "Missing required variables: vm_name, vm_template, datacenter_name"
+    success_msg: "All required variables present"
+  tags:
+    - day1
+    - provisioning
+    - clone
+    - validate
+
+# ==============================================================================
+# Gather Template Information
+# ==============================================================================
+
+- name: Gather template information
+  vmware_vm_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    vm_name: "{{ vm_template }}"
+    datacenter: "{{ datacenter_name }}"
+  delegate_to: localhost
+  register: template_info
+  tags:
+    - day1
+    - provisioning
+    - clone
+    - info
+
+- name: Verify template exists
+  assert:
+    that:
+      - template_info.virtual_machines | length > 0
+    fail_msg: "Template {{ vm_template }} not found in {{ datacenter_name }}"
+    success_msg: "Template {{ vm_template }} found"
+  tags:
+    - day1
+    - provisioning
+    - clone
+    - validate
+
+# ==============================================================================
+# Clone VM from Template
+# ==============================================================================
+
+- name: Clone VM from template
+  vmware_guest:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    template: "{{ vm_template }}"
+    datacenter: "{{ datacenter_name }}"
+    cluster: "{{ cluster_name | default(omit) }}"
+    folder: "{{ vm_folder | default(omit) }}"
+    resource_pool: "{{ resource_pool | default('Resources') }}"
+    datastore: "{{ datastore_name | default(omit) }}"
+    state: "{{ clone_state }}"
+    wait_for_customization: true
+    customization: "{{ vm_customization | default(omit) }}"
+  delegate_to: localhost
+  register: clone_result
+  tags:
+    - day1
+    - provisioning
+    - clone
+    - create
+
+- name: Display clone result
+  debug:
+    msg:
+      - "VM Clone Status:"
+      - "Name: {{ clone_result.instance.hw_name }}"
+      - "UUID: {{ clone_result.instance.hw_product_uuid }}"
+      - "Memory: {{ clone_result.instance.hw_memtotal_mb }} MB"
+      - "CPU: {{ clone_result.instance.hw_numvcpu }} vCPU"
+  when: clone_result is changed
+  tags:
+    - day1
+    - provisioning
+    - clone
+    - always
+
+# ==============================================================================
+# Power On VM
+# ==============================================================================
+
+- name: Power on cloned VM
+  vmware_guest_powerstate:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    state: powered_on
+  delegate_to: localhost
+  tags:
+    - day1
+    - provisioning
+    - clone
+    - power
+
+# ==============================================================================
+# Wait for IP Address Assignment
+# ==============================================================================
+
+- name: Wait for VM to get IP address
+  vmware_guest_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+  delegate_to: localhost
+  register: vm_info
+  until:
+    - vm_info.instance.ipv4 is defined
+    - vm_info.instance.ipv4 != ''
+  retries: 120
+  delay: 5
+  when: wait_for_ip_address | bool
+  tags:
+    - day1
+    - provisioning
+    - clone
+    - network
+
+- name: Display VM information
+  debug:
+    msg:
+      - "VM Successfully Provisioned:"
+      - "Name: {{ vm_info.instance.hw_name }}"
+      - "IP Address: {{ vm_info.instance.ipv4 }}"
+      - "State: {{ vm_info.instance.powerstate }}"
+      - "UUID: {{ vm_info.instance.hw_product_uuid }}"
+  when: wait_for_ip_address | bool
+  tags:
+    - day1
+    - provisioning
+    - clone
+    - info
+    - always
+
+# ==============================================================================
+# Create Snapshot After Clone (Optional)
+# ==============================================================================
+
+- name: Create snapshot after clone
+  vmware_guest_snapshot:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ vm_name }}"
+    datacenter: "{{ datacenter_name }}"
+    state: present
+    snapshot_name: "Initial-Clone-{{ ansible_date_time.iso8601_basic_short }}"
+    description: "Initial snapshot after VM clone"
+    memory_dump: false
+    quiesce: true
+  delegate_to: localhost
+  when: snapshot_after_clone | bool
+  tags:
+    - day1
+    - provisioning
+    - clone
+    - snapshot

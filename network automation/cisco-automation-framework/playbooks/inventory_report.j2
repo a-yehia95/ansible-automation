@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Device Inventory Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { background-color: #003366; color: white; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { padding: 12px; text-align: left; border: 1px solid #ddd; }
+        th { background-color: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Cisco Network Devices Inventory</h1>
+        <p>Report Generated: {{ ansible_date_time.iso8601 }}</p>
+    </div>
+
+    <h2>IOS Devices</h2>
+    <table>
+        <tr>
+            <th>Hostname</th>
+            <th>IP Address</th>
+            <th>Model</th>
+            <th>Version</th>
+            <th>Serial Number</th>
+            <th>Uptime</th>
+        </tr>
+        {% for host in groups.ios_devices %}
+        <tr>
+            <td>{{ hostvars[host].ansible_net_hostname }}</td>
+            <td>{{ hostvars[host].ansible_host }}</td>
+            <td>{{ hostvars[host].ansible_net_model }}</td>
+            <td>{{ hostvars[host].ansible_net_version }}</td>
+            <td>{{ hostvars[host].ansible_net_serialnum }}</td>
+            <td>{{ hostvars[host].ansible_net_uptime_seconds }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h2>Firepower Devices</h2>
+    <table>
+        <tr>
+            <th>Hostname</th>
+            <th>IP Address</th>
+            <th>Model</th>
+            <th>FMC ID</th>
+        </tr>
+        {% for host in groups.fmc_devices %}
+        <tr>
+            <td>{{ host }}</td>
+            <td>{{ hostvars[host].ansible_host }}</td>
+            <td>{{ hostvars[host].device_model }}</td>
+            <td>{{ hostvars[host].fmc_config.fmc_device_id }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

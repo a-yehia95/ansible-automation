@@ -1,0 +1,218 @@
+---
+# ==============================================================================
+# Kubeadm Init Role - Main Task File
+# ==============================================================================
+# Purpose: Initialize the Kubernetes cluster on the first master node
+# This includes kubeadm init, certificate extraction, and CNI setup
+# ==============================================================================
+
+- name: Pre-flight checks for kubeadm init
+  block:
+    - name: Verify kubeadm is installed
+      command: kubeadm version -o short
+      register: kubeadm_check
+      changed_when: false
+      failed_when: false
+
+    - name: Check if cluster already initialized
+      stat:
+        path: /etc/kubernetes/admin.conf
+      register: k8s_admin_conf
+      changed_when: false
+
+    - name: Display initialization status
+      debug:
+        msg:
+          - "kubeadm: {{ kubeadm_check.stdout | default('Not found') }}"
+          - "Cluster initialized: {{ 'YES' if k8s_admin_conf.stat.exists else 'NO' }}"
+
+- name: Initialize Kubernetes cluster
+  block:
+    - name: Create kubeadm configuration template
+      template:
+        src: kubeadm-config.yaml.j2
+        dest: /tmp/kubeadm-config.yaml
+        mode: "0644"
+      register: kubeadm_config
+      changed_when: kubeadm_config.changed
+
+    - name: Display kubeadm config (for debugging)
+      debug:
+        msg: "Kubeadm configuration written to /tmp/kubeadm-config.yaml"
+
+    - name: Run kubeadm init
+      command: >
+        kubeadm init
+        --config=/tmp/kubeadm-config.yaml
+        --upload-certs
+      register: kubeadm_init_result
+      changed_when: kubeadm_init_result.changed
+      failed_when: 
+        - kubeadm_init_result.rc != 0
+        - "'already exists' not in kubeadm_init_result.stderr"
+      when: not k8s_admin_conf.stat.exists
+
+    - name: Display kubeadm init output
+      debug:
+        msg: "{{ kubeadm_init_result.stdout_lines | default('Cluster already initialized') }}"
+      when: kubeadm_init_result.stdout is defined
+
+  rescue:
+    - name: Display kubeadm init error
+      debug:
+        msg: "{{ kubeadm_init_result.stderr_lines | default(['Unknown error']) }}"
+    - fail:
+        msg: "kubeadm init failed - see logs above"
+
+- name: Configure kubeconfig for root user
+  block:
+    - name: Ensure .kube directory exists
+      file:
+        path: /root/.kube
+        state: directory
+        mode: "0755"
+
+    - name: Copy admin.conf to kubeconfig
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        mode: "0600"
+        owner: root
+        group: root
+      register: kubeconfig_copy
+      changed_when: kubeconfig_copy.changed
+
+    - name: Verify kubeconfig
+      command: kubectl cluster-info
+      register: cluster_info
+      changed_when: false
+      failed_when: cluster_info.rc != 0
+
+- name: Extract certificate key and join tokens
+  block:
+    - name: Retrieve certificate key
+      shell: |
+        kubeadm init phase upload-certs --upload-certs 2>/dev/null | grep -oE '^[a-f0-9]{64}$' | head -1
+      register: cert_key
+      changed_when: false
+      failed_when: cert_key.stdout | length == 0
+
+    - name: Retrieve bootstrap token
+      shell: |
+        kubeadm token list | awk 'NR==2 {print $1}'
+      register: bootstrap_token
+      changed_when: false
+      failed_when: bootstrap_token.stdout | length == 0
+
+    - name: Retrieve token CA cert hash
+      shell: |
+        openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | \
+        openssl rsa -pubin -outform der 2>/dev/null | \
+        openssl dgst -sha256 -hex | sed 's/^.* //'
+      register: token_ca_hash
+      changed_when: false
+      failed_when: token_ca_hash.stdout | length == 0
+
+    - name: Save join information to facts
+      set_fact:
+        k8s_cert_key: "{{ cert_key.stdout }}"
+        k8s_bootstrap_token: "{{ bootstrap_token.stdout }}"
+        k8s_token_ca_hash: "{{ token_ca_hash.stdout }}"
+        k8s_api_endpoint: "{{ control_plane_endpoint }}"
+
+    - name: Display join information
+      debug:
+        msg:
+          - "✓ Kubernetes Cluster Initialized Successfully"
+          - "  Certificate Key: {{ k8s_cert_key[:32] }}..."
+          - "  Bootstrap Token: {{ k8s_bootstrap_token }}"
+          - "  Token CA Hash: {{ k8s_token_ca_hash[:32] }}..."
+          - "  API Endpoint: {{ k8s_api_endpoint }}"
+
+- name: Install CNI (Calico)
+  block:
+    - name: Create CNI manifest directory
+      file:
+        path: /tmp/cni
+        state: directory
+        mode: "0755"
+
+    - name: Download Calico manifest
+      get_url:
+        url: "https://raw.githubusercontent.com/projectcalico/calico/v3.26.0/manifests/tigera-operator.yaml"
+        dest: /tmp/cni/tigera-operator.yaml
+        mode: "0644"
+      register: calico_download
+      changed_when: calico_download.changed
+      retries: 3
+      delay: 10
+
+    - name: Apply Calico operator manifest
+      command: kubectl apply -f /tmp/cni/tigera-operator.yaml
+      register: calico_operator
+      changed_when: "'created' in calico_operator.stdout or 'configured' in calico_operator.stdout"
+      failed_when: calico_operator.rc != 0
+
+    - name: Wait for Tigera operator to be ready
+      command: >
+        kubectl wait --for=condition=ready pod 
+        -l k8s-app=tigera-operator 
+        -n tigera-operator 
+        --timeout=300s
+      register: operator_ready
+      changed_when: false
+      failed_when: operator_ready.rc != 0
+      retries: 3
+      delay: 10
+
+    - name: Create Calico installation manifest
+      template:
+        src: calico-installation.yaml.j2
+        dest: /tmp/cni/calico-installation.yaml
+        mode: "0644"
+      register: calico_install_manifest
+      changed_when: calico_install_manifest.changed
+
+    - name: Apply Calico installation manifest
+      command: kubectl apply -f /tmp/cni/calico-installation.yaml
+      register: calico_install
+      changed_when: "'created' in calico_install.stdout or 'configured' in calico_install.stdout"
+      failed_when: calico_install.rc != 0
+
+    - name: Wait for Calico nodes to be ready
+      command: >
+        kubectl wait --for=condition=ready node 
+        --all 
+        --timeout=300s
+      register: nodes_ready
+      changed_when: false
+      failed_when: false
+      retries: 5
+      delay: 30
+
+  rescue:
+    - name: Display CNI installation error
+      debug:
+        msg: "CNI installation encountered issues - cluster may still work"
+
+- name: Display cluster status
+  block:
+    - name: Get cluster info
+      command: kubectl cluster-info
+      register: cluster_info_final
+      changed_when: false
+
+    - name: Get node status
+      command: kubectl get nodes
+      register: node_status
+      changed_when: false
+
+    - name: Display cluster readiness
+      debug:
+        msg:
+          - "✓ Cluster Information:"
+          - "{{ cluster_info_final.stdout }}"
+          - ""
+          - "Node Status:"
+          - "{{ node_status.stdout }}"

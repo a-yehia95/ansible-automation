@@ -1,0 +1,200 @@
+---
+# ============================================================================
+# Maintenance Role - OS Upgrade with Pre/Post Validation
+# ============================================================================
+
+# Pre-Upgrade Validation
+- name: Get current OS version (pre-upgrade)
+  cisco.ios.ios_facts:
+    gather_subset:
+      - hardware
+  register: pre_upgrade_facts
+  tags:
+    - maintenance
+    - upgrade
+    - pre_check
+
+- name: Display current OS version
+  debug:
+    msg: "Current OS Version: {{ ansible_net_version }}"
+  tags:
+    - maintenance
+    - upgrade
+    - pre_check
+
+# Pre-Upgrade Validation Tasks
+- name: Check available flash storage
+  cisco.ios.ios_command:
+    commands:
+      - "show flash:"
+  register: flash_status
+  tags:
+    - maintenance
+    - upgrade
+    - pre_check
+
+- name: Verify sufficient space for upgrade
+  assert:
+    that:
+      - "flash_status.stdout[0] is defined"
+    fail_msg: "Unable to determine flash space"
+  tags:
+    - maintenance
+    - upgrade
+    - pre_check
+
+# Backup before upgrade
+- name: Create pre-upgrade backup
+  cisco.ios.ios_command:
+    commands:
+      - "show running-config"
+  register: pre_upgrade_config
+  tags:
+    - maintenance
+    - upgrade
+    - backup
+
+- name: Save pre-upgrade configuration
+  copy:
+    content: |
+      ! Pre-Upgrade Backup
+      ! Device: {{ inventory_hostname }}
+      ! Version: {{ ansible_net_version }}
+      ! Date: {{ ansible_date_time.iso8601 }}
+      !
+      {{ pre_upgrade_config.stdout[0] }}
+    dest: "{{ backup_config.backup_path }}/PRE_UPGRADE_{{ inventory_hostname }}_{{ ansible_date_time.epoch }}.cfg"
+  delegate_to: localhost
+  tags:
+    - maintenance
+    - upgrade
+    - backup
+
+# Download Image (if using remote server)
+- name: Download OS image from remote server
+  get_url:
+    url: "{{ os_upgrade.image_url }}"
+    dest: "flash:{{ os_upgrade.image_filename }}"
+    timeout: 600
+  when:
+    - os_upgrade is defined
+    - os_upgrade.image_url is defined
+  tags:
+    - maintenance
+    - upgrade
+    - download
+  ignore_errors: true
+
+# Verify Image Integrity
+- name: Verify image checksum
+  cisco.ios.ios_command:
+    commands:
+      - "verify /md5 flash:{{ os_upgrade.image_filename }}"
+  register: verify_result
+  when:
+    - os_upgrade is defined
+    - os_upgrade.image_md5 is defined
+  tags:
+    - maintenance
+    - upgrade
+    - verification
+
+- name: Set boot image
+  cisco.ios.ios_command:
+    commands:
+      - "configure terminal"
+      - "boot system flash flash:{{ os_upgrade.image_filename }}"
+      - "end"
+      - "write memory"
+  when:
+    - os_upgrade is defined
+    - os_upgrade.image_filename is defined
+  tags:
+    - maintenance
+    - upgrade
+    - boot
+
+# Reload device
+- name: Reload device for upgrade
+  cisco.ios.ios_command:
+    commands:
+      - "reload in 2"
+  async: 600
+  poll: 0
+  when:
+    - not ansible_check_mode
+    - os_upgrade.perform_reload | default(false) | bool
+  tags:
+    - maintenance
+    - upgrade
+    - reload
+
+# Wait for device to come back online
+- name: Wait for device to come back online
+  wait_for:
+    host: "{{ ansible_host }}"
+    port: 22
+    delay: 60
+    timeout: 300
+  delegate_to: localhost
+  when:
+    - not ansible_check_mode
+    - os_upgrade.perform_reload | default(false) | bool
+  tags:
+    - maintenance
+    - upgrade
+    - reload
+
+# Post-Upgrade Validation
+- name: Verify upgrade was successful
+  cisco.ios.ios_facts:
+    gather_subset:
+      - hardware
+  register: post_upgrade_facts
+  tags:
+    - maintenance
+    - upgrade
+    - post_check
+
+- name: Display new OS version
+  debug:
+    msg: |
+      OS Upgrade Complete
+      Previous Version: {{ pre_upgrade_facts.ansible_net_version }}
+      Current Version: {{ ansible_net_version }}
+  tags:
+    - maintenance
+    - upgrade
+    - post_check
+
+# Post-Upgrade Configuration Validation
+- name: Validate configuration after upgrade
+  cisco.ios.ios_command:
+    commands:
+      - "show running-config | include hostname"
+      - "show running-config | include ip address"
+  register: config_check
+  tags:
+    - maintenance
+    - upgrade
+    - post_check
+
+# Health Check after upgrade
+- name: Perform health check post-upgrade
+  include_role:
+    name: validation
+  tags:
+    - maintenance
+    - upgrade
+    - post_check
+
+# Generate upgrade report
+- name: Create upgrade report
+  template:
+    src: upgrade_report.j2
+    dest: "./logs/upgrade_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.txt"
+  delegate_to: localhost
+  tags:
+    - maintenance
+    - upgrade
+    - reporting

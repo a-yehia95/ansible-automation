@@ -1,0 +1,79 @@
+# Cisco Automation Framework - Vault Template
+# ============================================================================
+# This file shows which variables should be stored in Ansible Vault
+# Create vault file: ansible-vault create group_vars/all/vault.yml
+# Edit vault file: ansible-vault edit group_vars/all/vault.yml
+# 
+# IMPORTANT: Never commit unencrypted credentials to version control!
+
+---
+# IOS Device Credentials (Group: ios_devices)
+ios_user: automation
+ios_password: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  66386d8...  # Encrypted password (generate with: ansible-vault encrypt_string)
+
+ios_enable_password: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  66386d8...  # Encrypted enable password
+
+# TACACS+ Configuration
+tacacs_shared_key: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  66386d8...  # Encrypted TACACS key
+
+# SNMP Configuration
+snmp_ro_community: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  66386d8...  # Encrypted RO community string
+
+snmp_rw_community: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  66386d8...  # Encrypted RW community string
+
+# FTD Device Credentials (Group: fmc_devices)
+ftd_user: admin
+ftd_password: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  66386d8...  # Encrypted FTD password
+
+# FMC Management Credentials
+fmc_admin_user: admin
+fmc_admin_password: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  66386d8...  # Encrypted FMC password
+
+# Host-specific credentials
+core_switch_01_enable_pass: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  66386d8...
+
+ftd_sensor_01_enable_pass: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  66386d8...
+
+ftd_sensor_01_fmc_reg_key: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  66386d8...
+
+ftd_sensor_01_cert_fp: "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+
+# ============================================================================
+# ENCRYPTION WORKFLOW:
+# ============================================================================
+# 
+# 1. Create vault password file:
+#    echo "my_secure_vault_password" > ~/.vault_pass
+#    chmod 600 ~/.vault_pass
+#
+# 2. Create encrypted vault file:
+#    ansible-vault create --vault-password-file ~/.vault_pass group_vars/all/vault.yml
+#
+# 3. Encrypt single values:
+#    ansible-vault encrypt_string --vault-password-file ~/.vault_pass 'mypassword'
+#
+# 4. Run playbooks with vault:
+#    ansible-playbook site.yml --vault-password-file ~/.vault_pass
+#
+# 5. Edit encrypted file:
+#    ansible-vault edit --vault-password-file ~/.vault_pass group_vars/all/vault.yml

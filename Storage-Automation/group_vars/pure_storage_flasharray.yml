@@ -1,0 +1,40 @@
+---
+# ==============================================================================
+# Pure Storage FlashArray - Global Configuration
+# ==============================================================================
+# Configuration variables for Pure Storage FlashArray operations
+# These variables are used by all Pure Storage playbooks
+# ==============================================================================
+
+# Authentication (should be overridden in vault.yml for production)
+pure_api_token: "{{ vault_pure_api_token }}"
+
+# Array Information
+pure_fb_url: "https://{{ inventory_hostname }}"
+pure_api_version: "2.19"
+validate_certs: false
+
+# Host Registration Settings
+pure_host_protocol: "iscsi"           # iscsi, fc, or nvme
+pure_host_personality: "linux"        # linux, vms, windows, esx, etc.
+pure_host_nqn_prefix: "nqn.2010-06.com.example"
+
+# Volume Settings
+pure_volume_defaults:
+  size_gb: 100
+  overwrite: false
+  thin_provisioning: true
+  eradicate: false                    # Safety: don't eradicate unless explicit
+
+# Snapshot Settings
+pure_snapshot_defaults:
+  suffix: "-snap"
+  eradicate: false
+
+# Performance/Behavior
+pure_api_retries: 3
+pure_api_retry_delay: 5
+
+# Logging
+pure_enable_logging: true
+pure_log_level: "INFO"

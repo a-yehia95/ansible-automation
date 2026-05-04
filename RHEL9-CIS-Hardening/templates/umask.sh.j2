@@ -1,0 +1,12 @@
+#!/bin/bash
+# ==============================================================================
+# Umask Configuration Template
+# ==============================================================================
+# Sets default umask for all users
+
+# Set default umask to {{ cis_account_policies.umask_default }}
+if [ $UID -gt 199 ] && [ "`id -gn`" = "`id -un`" ]; then
+    umask {{ cis_account_policies.umask_default }}
+else
+    umask {{ cis_account_policies.umask_default }}
+fi

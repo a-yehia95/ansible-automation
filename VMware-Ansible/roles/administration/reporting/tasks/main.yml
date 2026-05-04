@@ -1,0 +1,251 @@
+---
+# ==============================================================================
+# Reporting Role - Tasks
+# ==============================================================================
+# Gathers and reports VMware infrastructure facts
+
+- name: Display reporting information
+  debug:
+    msg:
+      - "=========================================="
+      - "VMware Infrastructure Reporting"
+      - "=========================================="
+      - "vCenter: {{ vcenter_hostname }}"
+      - "Report Format: {{ report_format }}"
+      - "Report Directory: {{ report_directory }}"
+      - "=========================================="
+  tags:
+    - day2
+    - administration
+    - reporting
+    - always
+
+# ==============================================================================
+# Create Report Directory
+# ==============================================================================
+
+- name: Create report directory
+  file:
+    path: "{{ report_directory }}"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+  tags:
+    - day2
+    - administration
+    - reporting
+    - setup
+
+# ==============================================================================
+# Gather VM Inventory
+# ==============================================================================
+
+- name: Gather VM inventory information
+  vmware_vm_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+  delegate_to: localhost
+  register: vm_inventory
+  when: include_vm_inventory | bool
+  tags:
+    - day2
+    - administration
+    - reporting
+    - vms
+
+- name: Generate VM inventory report
+  copy:
+    content: |
+      VM Name,Power State,CPU,Memory (MB),IP Address,Datacenter,Cluster
+      {% for vm in vm_inventory.virtual_machines %}
+      {{ vm.vm_name }},{{ vm.powerstate }},{{ vm.num_cpus }},{{ vm.memory_mb }},{{ vm.ip_address | default('N/A') }},{{ vm.datacenter }},{{ vm.cluster }}
+      {% endfor %}
+    dest: "{{ report_directory }}/vm_inventory_{{ ansible_date_time.iso8601_basic_short }}.csv"
+  delegate_to: localhost
+  when:
+    - include_vm_inventory | bool
+    - report_format == "csv"
+  tags:
+    - day2
+    - administration
+    - reporting
+    - vms
+
+# ==============================================================================
+# Gather Host Status
+# ==============================================================================
+
+- name: Gather ESXi host information
+  vmware_host_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+  delegate_to: localhost
+  register: host_inventory
+  when: include_host_status | bool
+  tags:
+    - day2
+    - administration
+    - reporting
+    - hosts
+
+- name: Generate host status report
+  copy:
+    content: |
+      Hostname,Status,Version,VMs Running,Memory (GB),CPU Count
+      {% for hostname, hostinfo in host_inventory.hosts.items() %}
+      {{ hostname }},{{ hostinfo.config.powerSystem.powerState }},{{ hostinfo.config.product.version }},{{ hostinfo.vm | length }},{{ (hostinfo.config.systemResources.config.mem.numPages * hostinfo.config.systemResources.config.mem.pageSizeHz / 1024 / 1024 / 1024) | round(2) }},{{ hostinfo.config.hardware.cpuInfo.numCpuCores }}
+      {% endfor %}
+    dest: "{{ report_directory }}/host_status_{{ ansible_date_time.iso8601_basic_short }}.csv"
+  delegate_to: localhost
+  when:
+    - include_host_status | bool
+    - report_format == "csv"
+  tags:
+    - day2
+    - administration
+    - reporting
+    - hosts
+
+# ==============================================================================
+# Gather Snapshot Information
+# ==============================================================================
+
+- name: Get all VMs for snapshot reporting
+  vmware_vm_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+  delegate_to: localhost
+  register: all_vms
+  when: include_snapshot_info | bool
+  tags:
+    - day2
+    - administration
+    - reporting
+    - snapshots
+
+- name: Gather snapshot information for each VM
+  vmware_guest_snapshot_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    name: "{{ item.vm_name }}"
+    datacenter: "{{ item.datacenter }}"
+  loop: "{{ all_vms.virtual_machines }}"
+  delegate_to: localhost
+  register: snapshot_data
+  when: include_snapshot_info | bool
+  tags:
+    - day2
+    - administration
+    - reporting
+    - snapshots
+
+- name: Generate snapshot report
+  copy:
+    content: |
+      VM Name,Snapshot Count,Snapshot Names
+      {% for result in snapshot_data.results %}
+      {{ result.item.vm_name }},{{ result.guest_snapshots | length | default(0) }},{{ result.guest_snapshots | map(attribute='name') | list | join(';') | default('None') }}
+      {% endfor %}
+    dest: "{{ report_directory }}/snapshot_report_{{ ansible_date_time.iso8601_basic_short }}.csv"
+  delegate_to: localhost
+  when:
+    - include_snapshot_info | bool
+    - report_format == "csv"
+    - snapshot_data is defined
+  tags:
+    - day2
+    - administration
+    - reporting
+    - snapshots
+
+# ==============================================================================
+# Gather Datastore Information
+# ==============================================================================
+
+- name: Gather datastore information
+  vmware_datastore_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+  delegate_to: localhost
+  register: datastore_data
+  when: include_datastore_info | bool
+  tags:
+    - day2
+    - administration
+    - reporting
+    - datastores
+
+- name: Generate datastore report
+  copy:
+    content: |
+      Datastore Name,Type,Capacity (GB),Free Space (GB),Provisioned (GB),Usage (%)
+      {% for ds in datastore_data.datastores %}
+      {{ ds.name }},{{ ds.type }},{{ (ds.capacity / 1024 / 1024 / 1024) | round(2) }},{{ (ds.freeSpace / 1024 / 1024 / 1024) | round(2) }},{{ ((ds.capacity - ds.freeSpace) / 1024 / 1024 / 1024) | round(2) }},{{ (((ds.capacity - ds.freeSpace) / ds.capacity * 100)) | round(2) }}
+      {% endfor %}
+    dest: "{{ report_directory }}/datastore_report_{{ ansible_date_time.iso8601_basic_short }}.csv"
+  delegate_to: localhost
+  when:
+    - include_datastore_info | bool
+    - report_format == "csv"
+  tags:
+    - day2
+    - administration
+    - reporting
+    - datastores
+
+# ==============================================================================
+# Generate Summary Report
+# ==============================================================================
+
+- name: Generate summary report
+  copy:
+    content: |
+      ========================================
+      VMware Infrastructure Report
+      Generated: {{ ansible_date_time.iso8601 }}
+      ========================================
+      
+      Total VMs: {{ vm_inventory.virtual_machines | length | default(0) }}
+      Total Hosts: {{ host_inventory.hosts | length | default(0) }}
+      Total Datastores: {{ datastore_data.datastores | length | default(0) }}
+      
+      Reports Generated:
+      - VM Inventory: {{ report_directory }}/vm_inventory_{{ ansible_date_time.iso8601_basic_short }}.csv
+      - Host Status: {{ report_directory }}/host_status_{{ ansible_date_time.iso8601_basic_short }}.csv
+      - Snapshot Info: {{ report_directory }}/snapshot_report_{{ ansible_date_time.iso8601_basic_short }}.csv
+      - Datastore Info: {{ report_directory }}/datastore_report_{{ ansible_date_time.iso8601_basic_short }}.csv
+      
+      ========================================
+    dest: "{{ report_directory }}/SUMMARY_{{ ansible_date_time.iso8601_basic_short }}.txt"
+  delegate_to: localhost
+  tags:
+    - day2
+    - administration
+    - reporting
+    - summary
+
+- name: Display report generation completion
+  debug:
+    msg:
+      - "Report generation complete!"
+      - "Reports available at: {{ report_directory }}"
+  tags:
+    - day2
+    - administration
+    - reporting
+    - always

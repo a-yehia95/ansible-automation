@@ -1,0 +1,106 @@
+ARG EE_BASE_IMAGE="registry.redhat.io/ubi9/ubi-minimal:latest@sha256:7d4e47500f28ac3a2bff06c25eff9127ff21048538ae03ce240d57cf756acd00"
+ARG PYCMD="/usr/bin/python3.12"
+ARG PYPKG="python3.12"
+ARG PKGMGR_PRESERVE_CACHE=""
+ARG ANSIBLE_GALAXY_CLI_COLLECTION_OPTS=""
+ARG ANSIBLE_GALAXY_CLI_ROLE_OPTS=""
+ARG ANSIBLE_INSTALL_REFS="ansible-core ansible-runner"
+ARG PKGMGR="/usr/bin/microdnf"
+
+Base build stage
+FROM $EE_BASE_IMAGE AS base
+USER root
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ARG EE_BASE_IMAGE
+ARG PYCMD
+ARG PYPKG
+ARG PKGMGR_PRESERVE_CACHE
+ARG ANSIBLE_GALAXY_CLI_COLLECTION_OPTS
+ARG ANSIBLE_GALAXY_CLI_ROLE_OPTS
+ARG ANSIBLE_INSTALL_REFS
+ARG PKGMGR
+
+COPY _build/scripts/ /output/scripts/
+COPY _build/scripts/entrypoint /opt/builder/bin/entrypoint
+RUN $PKGMGR install --nodocs --setopt install_weak_deps=0 --assumeyes python3.12-pyyaml python3.12-pip python3.12-pip-wheel python3.12-cryptography
+RUN $PKGMGR install $PYPKG -y ; if [ -z $PKGMGR_PRESERVE_CACHE ]; then $PKGMGR clean all; fi
+RUN $PYCMD -m pip install --no-cache-dir $ANSIBLE_INSTALL_REFS
+
+# Builder build stage
+FROM base AS builder
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+WORKDIR /build
+ARG EE_BASE_IMAGE
+ARG PYCMD
+ARG PYPKG
+ARG PKGMGR_PRESERVE_CACHE
+ARG ANSIBLE_GALAXY_CLI_COLLECTION_OPTS
+ARG ANSIBLE_GALAXY_CLI_ROLE_OPTS
+ARG ANSIBLE_INSTALL_REFS
+ARG PKGMGR
+
+RUN $PYCMD -m pip install --no-cache-dir bindep pyyaml packaging
+RUN $PKGMGR install --nodocs --setopt install_weak_deps=0 --assumeyes cargo
+ENV PIP_OPTS="--use-pep517 --disable-pip-version-check"
+COPY _build/system-certifi /system-certifi
+RUN cd /system-certifi && $PYCMD setup.py sdist -d /cachi2/output/deps/pip/
+COPY _build/requirements.txt requirements.txt
+COPY _build/bindep.txt bindep.txt
+RUN $PYCMD /output/scripts/introspect.py introspect --user-pip=requirements.txt --user-bindep=bindep.txt --write-bindep=/tmp/src/bindep.txt --write-pip=/tmp/src/requirements.txt
+RUN /output/scripts/assemble
+
+# Final build stage
+FROM base AS final
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ARG EE_BASE_IMAGE
+ARG PYCMD
+ARG PYPKG
+ARG PKGMGR_PRESERVE_CACHE
+ARG ANSIBLE_GALAXY_CLI_COLLECTION_OPTS
+ARG ANSIBLE_GALAXY_CLI_ROLE_OPTS
+ARG ANSIBLE_INSTALL_REFS
+ARG PKGMGR
+
+COPY --from=builder /output/ /output/
+RUN /output/scripts/install-from-bindep && rm -rf /output/wheels
+RUN mkdir -p /runner && chgrp 0 /runner && chmod -R ug+rwx /runner
+WORKDIR /runner
+RUN for dir in \
+    /home/runner \
+    /home/runner/.ansible \
+    /home/runner/.ansible/tmp \
+    /runner \
+    /home/runner \
+    /runner/env \
+    /runner/inventory \
+    /runner/project \
+    /runner/artifacts ; \
+    do mkdir -m 0775 -p $dir ; chmod -R g+rwx $dir ; chgrp -R root $dir ; done && \
+    for file in \
+     /home/runner/.ansible/galaxy_token \
+     /etc/passwd \
+     /etc/group ; \
+     do touch $file ; chmod g+rw $file ; chgrp root $file ; done
+RUN alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+RUN alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3.12 1
+RUN $PKGMGR reinstall --setopt=install_weak_deps=0 --nodocs -y tzdata && $PKGMGR clean all
+VOLUME /runner
+ENV HOME=/home/runner
+ADD _build/entrypoint.sh /bin/entrypoint
+ENV DESCRIPTION="Red Hat Ansible Automation Platform Minimal Execution Environment" \
+    container=oci
+LABEL com.redhat.component="ee-minimal-container" \
+    name="ansible-automation-platform/ee-minimal-rhel9" \
+    version="2.16.18" \
+    cpe="cpe:/a:redhat:ansible_core:2.16::el9" \
+    summary="${DESCRIPTION}" \
+    io.openshift.expose-services="" \
+    io.openshift.tags="automation,ansible" \
+    io.k8s.display-name="ee-minimal-rhel9" \
+    maintainer="Ansible Automation Platform Productization Team" \
+    description="${DESCRIPTION}" \
+    io.k8s.description="${DESCRIPTION}"
+RUN rm -rf /output
+LABEL ansible-execution-environment=true
+ENTRYPOINT ["entrypoint"]
+CMD ["ansible-runner", "run", "/runner"]

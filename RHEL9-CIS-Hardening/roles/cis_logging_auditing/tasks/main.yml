@@ -1,0 +1,312 @@
+---
+# ==============================================================================
+# Role: cis_logging_auditing - Logging and Auditing Configuration
+# ==============================================================================
+# Purpose: Configure auditd, rsyslog, and log file security
+
+- name: CIS 4.1 - Auditd Configuration
+  block:
+    - name: Install auditd package (CIS 4.1.1)
+      package:
+        name:
+          - audit
+          - audit-libs
+        state: present
+      tags:
+        - cis_4_1_1
+        - auditd
+
+    - name: Enable and start auditd service (CIS 4.1.2)
+      systemd:
+        name: auditd
+        enabled: true
+        state: started
+      tags:
+        - cis_4_1_2
+        - auditd
+
+    - name: Configure auditd buffer (CIS 4.1.3)
+      lineinfile:
+        path: /etc/audit/audit.rules
+        line: "-b {{ cis_logging_auditing.auditd_buffer_size }}"
+        state: present
+      notify: restart auditd
+      tags:
+        - cis_4_1_3
+        - auditd
+
+    - name: Configure auditd failure mode (CIS 4.1.4)
+      lineinfile:
+        path: /etc/audit/audit.rules
+        line: "-f 2"
+        state: present
+      notify: restart auditd
+      tags:
+        - cis_4_1_4
+        - auditd
+
+  tags:
+    - cis_4_1
+    - logging_auditing
+
+- name: CIS 4.2 - Configure audit rules
+  block:
+    - name: Clear existing audit rules
+      file:
+        path: /etc/audit/rules.d/audit.rules
+        state: absent
+      notify: restart auditd
+      tags:
+        - cis_4_2
+        - audit_rules
+
+    - name: Create new audit rules file
+      file:
+        path: /etc/audit/rules.d/audit.rules
+        state: touch
+        mode: "0640"
+      tags:
+        - cis_4_2
+        - audit_rules
+
+    - name: Configure audit rules - Time change (CIS 4.2.1)
+      blockinfile:
+        path: /etc/audit/rules.d/audit.rules
+        marker: "# {mark} TIME CHANGE RULES"
+        block: |
+          -a exit,always -F arch=b64 -S adjtimex -S settimeofday -k time-change
+          -a exit,always -F arch=b32 -S adjtimex -S settimeofday -S stime -k time-change
+          -a exit,always -F arch=b64 -S clock_settime -k time-change
+          -a exit,always -F arch=b32 -S clock_settime -k time-change
+          -w /etc/localtime -p wa -k time-change
+        state: present
+      notify: restart auditd
+      tags:
+        - cis_4_2_1
+        - audit_rules
+
+    - name: Configure audit rules - User/group modifications (CIS 4.2.2)
+      blockinfile:
+        path: /etc/audit/rules.d/audit.rules
+        marker: "# {mark} IDENTITY CHANGE RULES"
+        block: |
+          -w /etc/group -p wa -k identity
+          -w /etc/passwd -p wa -k identity
+          -w /etc/gshadow -p wa -k identity
+          -w /etc/shadow -p wa -k identity
+          -w /etc/security/opasswd -p wa -k identity
+        state: present
+      notify: restart auditd
+      tags:
+        - cis_4_2_2
+        - audit_rules
+
+    - name: Configure audit rules - File system mounts (CIS 4.2.3)
+      blockinfile:
+        path: /etc/audit/rules.d/audit.rules
+        marker: "# {mark} MOUNT RULES"
+        block: |
+          -a exit,always -F arch=b64 -S mount -S umount2 -F auid>=1000 -F auid!=-1 -k mount
+          -a exit,always -F arch=b32 -S mount -S umount -S umount2 -F auid>=1000 -F auid!=-1 -k mount
+        state: present
+      notify: restart auditd
+      tags:
+        - cis_4_2_3
+        - audit_rules
+
+    - name: Configure audit rules - File deletion (CIS 4.2.4)
+      blockinfile:
+        path: /etc/audit/rules.d/audit.rules
+        marker: "# {mark} FILE DELETION RULES"
+        block: |
+          -a exit,always -F arch=b64 -S unlink -S unlinkat -S rename -S renameat -F auid>=1000 -F auid!=-1 -k delete
+          -a exit,always -F arch=b32 -S unlink -S unlinkat -S rename -S renameat -F auid>=1000 -F auid!=-1 -k delete
+        state: present
+      notify: restart auditd
+      tags:
+        - cis_4_2_4
+        - audit_rules
+
+    - name: Configure audit rules - Sudo logging (CIS 4.2.5)
+      blockinfile:
+        path: /etc/audit/rules.d/audit.rules
+        marker: "# {mark} SUDO LOGGING RULES"
+        block: |
+          -w /etc/sudoers -p wa -k scope
+          -w /etc/sudoers.d/ -p wa -k scope
+        state: present
+      notify: restart auditd
+      tags:
+        - cis_4_2_5
+        - audit_rules
+
+    - name: Configure audit rules - System administration (CIS 4.2.6)
+      blockinfile:
+        path: /etc/audit/rules.d/audit.rules
+        marker: "# {mark} SYSTEM ADMINISTRATION RULES"
+        block: |
+          -w /etc/audit/ -p wa -k audit_configuration
+          -w /etc/libaudit.conf -p wa -k audit_configuration
+          -w /etc/audisp/ -p wa -k audit_configuration
+          -w /sbin/auditctl -p x -k audit_tools
+          -w /sbin/auditd -p x -k audit_tools
+        state: present
+      notify: restart auditd
+      tags:
+        - cis_4_2_6
+        - audit_rules
+
+    - name: Make audit configuration immutable (CIS 4.2.7)
+      lineinfile:
+        path: /etc/audit/rules.d/audit.rules
+        line: "-e 2"
+        state: present
+      notify: restart auditd
+      tags:
+        - cis_4_2_7
+        - audit_rules
+
+  tags:
+    - cis_4_2
+    - logging_auditing
+
+- name: CIS 4.3 - Rsyslog Configuration
+  block:
+    - name: Install rsyslog (CIS 4.3.1)
+      package:
+        name: rsyslog
+        state: present
+      tags:
+        - cis_4_3_1
+        - rsyslog
+
+    - name: Enable and start rsyslog service (CIS 4.3.2)
+      systemd:
+        name: rsyslog
+        enabled: true
+        state: started
+      tags:
+        - cis_4_3_2
+        - rsyslog
+
+    - name: Configure rsyslog authentication logging (CIS 4.3.3)
+      template:
+        src: rsyslog.conf.j2
+        dest: /etc/rsyslog.conf
+        mode: "0644"
+        backup: true
+      notify: restart rsyslog
+      tags:
+        - cis_4_3_3
+        - rsyslog
+
+    - name: Configure rsyslog file permissions (CIS 4.3.5)
+      file:
+        path: /var/log
+        state: directory
+        mode: "0755"
+      tags:
+        - cis_4_3_5
+        - rsyslog
+
+    - name: Set rsyslog log file permissions
+      shell: |
+        chmod g-wx,o-rwx /var/log/*.log 2>/dev/null || true
+      args:
+        executable: /bin/bash
+      tags:
+        - cis_4_3_5
+        - rsyslog
+
+  tags:
+    - cis_4_3
+    - logging_auditing
+
+- name: CIS 4.4 - Log file ownership and permissions
+  block:
+    - name: Ensure log files are owned by appropriate user (CIS 4.4.1)
+      file:
+        path: "{{ item }}"
+        owner: root
+        group: root
+        mode: "0640"
+      loop:
+        - /var/log/auth.log
+        - /var/log/secure
+        - /var/log/messages
+        - /var/log/cron
+      when: ansible_os_family == "RedHat"
+      failed_when: false
+      tags:
+        - cis_4_4_1
+        - log_files
+
+    - name: Ensure log files are not world accessible (CIS 4.4.2)
+      shell: find /var/log -type f -perm /g+wx,o+rwx 2>/dev/null -exec chmod g-wx,o-rwx {} \;
+      changed_when: false
+      tags:
+        - cis_4_4_2
+        - log_files
+
+    - name: Ensure log file retention is configured
+      template:
+        src: logrotate_audit.j2
+        dest: /etc/logrotate.d/audit
+        mode: "0644"
+      tags:
+        - cis_4_4
+        - log_retention
+
+  tags:
+    - cis_4_4
+    - logging_auditing
+
+- name: CIS 4.5 - Log forwarding (Optional)
+  block:
+    - name: Configure remote log forwarding (if configured)
+      template:
+        src: rsyslog_remote.conf.j2
+        dest: /etc/rsyslog.d/99-remote.conf
+        mode: "0644"
+      when: cis_logging_auditing.syslog_server != ""
+      notify: restart rsyslog
+      tags:
+        - cis_4_5
+        - log_forwarding
+
+  tags:
+    - cis_4_5
+    - logging_auditing
+
+- name: Summary - Logging and Auditing Configuration
+  debug:
+    msg: |
+      =====================================================================
+      Logging and Auditing Configuration Summary:
+      =====================================================================
+      ✓ Auditd installed and configured
+      ✓ Audit rules configured for critical operations
+      ✓ Rsyslog configured for centralized logging
+      ✓ Log file permissions secured
+      ✓ Log file retention configured
+      ✓ System administration audit enabled
+      =====================================================================
+  tags:
+    - always
+    - logging_auditing
+
+- name: Handler - Restart auditd
+  listen: "restart auditd"
+  systemd:
+    name: auditd
+    state: restarted
+  tags:
+    - logging_auditing
+
+- name: Handler - Restart rsyslog
+  listen: "restart rsyslog"
+  systemd:
+    name: rsyslog
+    state: restarted
+  tags:
+    - logging_auditing

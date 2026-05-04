@@ -1,0 +1,15 @@
+# ==============================================================================
+# Logrotate Configuration Template (Audit logs)
+# ==============================================================================
+# Configures audit log rotation and retention
+
+/var/log/audit/audit.log {
+    daily
+    rotate {{ cis_logging_auditing.log_retention_days }}
+    missingok
+    compress
+    delaycompress
+    postrotate
+        /sbin/service auditd restart > /dev/null 2>&1 || true
+    endscript
+}

@@ -1,0 +1,28 @@
+---
+# ==============================================================================
+# Ansible Inventory - VMware Infrastructure
+# ==============================================================================
+# Defines the vCenter server as inventory host with group memberships
+
+[vmware_infrastructure]
+vcenter01 ansible_host=vcenter.example.com ansible_connection=local
+
+[vmware_infrastructure:vars]
+ansible_python_interpreter=/usr/bin/python3
+ansible_connection=local
+
+# ==============================================================================
+# Additional Inventory Groups (Optional)
+# ==============================================================================
+
+[vmware_monitoring]
+# Monitoring servers in vSphere environment
+vcenter01
+
+[vmware_backup]
+# Backup targets
+backup-server ansible_host=backup.example.com
+
+[local]
+# Local execution (no SSH needed)
+localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3

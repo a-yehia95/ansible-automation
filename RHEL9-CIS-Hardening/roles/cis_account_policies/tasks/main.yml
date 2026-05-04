@@ -1,0 +1,315 @@
+---
+# ==============================================================================
+# Role: cis_account_policies - User Account and Access Control Hardening
+# ==============================================================================
+# Purpose: Configure user account policies, password requirements, sudo access
+
+- name: CIS 5.1 - Configure password policy (login.defs)
+  block:
+    - name: Set password maximum age (CIS 5.1.1)
+      lineinfile:
+        path: /etc/login.defs
+        regexp: "^PASS_MAX_DAYS"
+        line: "PASS_MAX_DAYS   {{ cis_account_policies.password_max_days }}"
+        state: present
+      tags:
+        - cis_5_1_1
+        - password_policy
+
+    - name: Set password minimum age (CIS 5.1.2)
+      lineinfile:
+        path: /etc/login.defs
+        regexp: "^PASS_MIN_DAYS"
+        line: "PASS_MIN_DAYS   {{ cis_account_policies.password_min_days }}"
+        state: present
+      tags:
+        - cis_5_1_2
+        - password_policy
+
+    - name: Set password minimum length (CIS 5.1.3)
+      lineinfile:
+        path: /etc/login.defs
+        regexp: "^PASS_MIN_LEN"
+        line: "PASS_MIN_LEN    {{ cis_account_policies.password_min_length }}"
+        state: present
+      tags:
+        - cis_5_1_3
+        - password_policy
+
+    - name: Set password warning age (CIS 5.1.4)
+      lineinfile:
+        path: /etc/login.defs
+        regexp: "^PASS_WARN_AGE"
+        line: "PASS_WARN_AGE   {{ cis_account_policies.password_warn_age }}"
+        state: present
+      tags:
+        - cis_5_1_4
+        - password_policy
+
+    - name: Display password policy configuration
+      debug:
+        msg: "Password policy configured - Max days: {{ cis_account_policies.password_max_days }}, Min length: {{ cis_account_policies.password_min_length }}"
+      tags:
+        - password_policy
+        - always
+
+  tags:
+    - cis_5_1
+    - account_policies
+
+- name: CIS 5.2 - Configure faillock (account lockout)
+  block:
+    - name: Install pam-faillock if needed
+      package:
+        name: pam
+        state: present
+      tags:
+        - cis_5_2
+        - faillock
+
+    - name: Configure pam_faillock (auth)
+      lineinfile:
+        path: /etc/pam.d/system-auth
+        line: "auth required pam_faillock.so preauth silent audit deny={{ cis_account_policies.account_lock_threshold }} unlock_time={{ cis_account_policies.account_lock_duration }}"
+        insertbefore: "^auth.*pam_unix.so"
+        state: present
+      tags:
+        - cis_5_2
+        - faillock
+
+    - name: Configure pam_faillock (account)
+      lineinfile:
+        path: /etc/pam.d/system-auth
+        line: "account required pam_faillock.so"
+        insertbefore: "^account.*pam_unix.so"
+        state: present
+      tags:
+        - cis_5_2
+        - faillock
+
+    - name: Display faillock configuration
+      debug:
+        msg: "Account lockout configured - Threshold: {{ cis_account_policies.account_lock_threshold }}, Duration: {{ cis_account_policies.account_lock_duration }}s"
+      tags:
+        - faillock
+        - always
+
+  tags:
+    - cis_5_2
+    - account_policies
+
+- name: CIS 5.3 - Configure sudo access
+  block:
+    - name: Ensure sudo package is installed
+      package:
+        name: sudo
+        state: present
+      tags:
+        - cis_5_3
+        - sudo
+
+    - name: Create sudoers.d directory if missing
+      file:
+        path: /etc/sudoers.d
+        state: directory
+        mode: "0755"
+      tags:
+        - cis_5_3
+        - sudo
+
+    - name: Configure sudo to use pty (CIS 5.3.1)
+      lineinfile:
+        path: /etc/sudoers
+        line: "Defaults use_pty"
+        state: present
+        validate: "/usr/sbin/visudo -cf %s"
+      tags:
+        - cis_5_3_1
+        - sudo
+
+    - name: Configure sudo logging (CIS 5.3.2)
+      lineinfile:
+        path: /etc/sudoers
+        line: "Defaults logfile=\"{{ cis_account_policies.sudo_log_file }}\""
+        state: present
+        validate: "/usr/sbin/visudo -cf %s"
+      tags:
+        - cis_5_3_2
+        - sudo
+
+    - name: Require password for sudo restart (CIS 5.3.3)
+      lineinfile:
+        path: /etc/sudoers
+        line: "Defaults requirepw"
+        state: present
+        validate: "/usr/sbin/visudo -cf %s"
+      tags:
+        - cis_5_3_3
+        - sudo
+
+    - name: Ensure sudo log file exists with correct permissions
+      file:
+        path: "{{ cis_account_policies.sudo_log_file }}"
+        state: touch
+        mode: "0640"
+        owner: root
+        group: adm
+      tags:
+        - cis_5_3
+        - sudo
+
+    - name: Display sudo configuration
+      debug:
+        msg: "Sudo configured - Log file: {{ cis_account_policies.sudo_log_file }}, PTY required: true"
+      tags:
+        - sudo
+        - always
+
+  tags:
+    - cis_5_3
+    - account_policies
+
+- name: CIS 5.4 - Configure umask
+  block:
+    - name: Set default umask in /etc/profile (CIS 5.4.1)
+      lineinfile:
+        path: /etc/profile
+        line: "umask {{ cis_account_policies.umask_default }}"
+        state: present
+      tags:
+        - cis_5_4_1
+        - umask
+
+    - name: Set default umask in /etc/bashrc (CIS 5.4.2)
+      lineinfile:
+        path: /etc/bashrc
+        line: "umask {{ cis_account_policies.umask_shell }}"
+        state: present
+      tags:
+        - cis_5_4_2
+        - umask
+
+    - name: Set default umask in /etc/profile.d/
+      template:
+        src: umask.sh.j2
+        dest: /etc/profile.d/umask.sh
+        mode: "0644"
+      tags:
+        - cis_5_4
+        - umask
+
+    - name: Display umask configuration
+      debug:
+        msg: "Umask configured - Default: {{ cis_account_policies.umask_default }}"
+      tags:
+        - umask
+        - always
+
+  tags:
+    - cis_5_4
+    - account_policies
+
+- name: CIS 5.5 - Manage user and group accounts
+  block:
+    - name: Ensure no empty password fields (CIS 5.5.1)
+      shell: |
+        awk -F: '($2 == "" ) { print $1 " does not have a password "}' /etc/shadow
+      register: empty_passwords
+      failed_when: false
+      changed_when: false
+      tags:
+        - cis_5_5_1
+        - accounts
+
+    - name: Alert on empty passwords
+      debug:
+        msg: "WARNING: Found users with empty passwords: {{ empty_passwords.stdout }}"
+      when: empty_passwords.stdout
+      tags:
+        - cis_5_5_1
+        - accounts
+
+    - name: Lock unused accounts
+      command: usermod -L {{ item }}
+      loop:
+        - bin
+        - sys
+        - sync
+        - games
+        - man
+        - lp
+        - mail
+        - news
+        - uucp
+        - proxy
+        - www-data
+        - backup
+        - list
+        - irc
+        - gnats
+      when: item in ansible_local.users | default([])
+      failed_when: false
+      tags:
+        - cis_5_5_2
+        - accounts
+
+    - name: Remove empty group shells
+      lineinfile:
+        path: /etc/shells
+        line: ""
+        state: absent
+      tags:
+        - cis_5_5
+        - accounts
+
+    - name: Display account management summary
+      debug:
+        msg: "User and group accounts management completed"
+      tags:
+        - accounts
+        - always
+
+  tags:
+    - cis_5_5
+    - account_policies
+
+- name: CIS 5.6 - Session timeout configuration
+  block:
+    - name: Set session timeout in /etc/profile.d/
+      template:
+        src: session_timeout.sh.j2
+        dest: /etc/profile.d/session_timeout.sh
+        mode: "0644"
+      vars:
+        timeout_seconds: "{{ cis_account_policies.session_timeout_seconds }}"
+      tags:
+        - cis_5_6
+        - session_timeout
+
+    - name: Display session timeout configuration
+      debug:
+        msg: "Session timeout configured - {{ cis_account_policies.session_timeout_seconds }} seconds"
+      tags:
+        - session_timeout
+        - always
+
+  tags:
+    - cis_5_6
+    - account_policies
+
+- name: Summary - Account Policies Hardening
+  debug:
+    msg: |
+      =====================================================================
+      Account Policies Hardening Summary:
+      =====================================================================
+      ✓ Password Policy Configured
+      ✓ Account Lockout Policy Configured
+      ✓ Sudo Access Hardened
+      ✓ Umask Configured
+      ✓ Session Timeout Configured
+      ✓ User Accounts Reviewed
+      =====================================================================
+  tags:
+    - always
+    - account_policies

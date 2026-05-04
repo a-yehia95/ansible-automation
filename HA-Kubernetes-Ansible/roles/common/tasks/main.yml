@@ -1,0 +1,588 @@
+---
+# ==============================================================================
+# Common Role - Main Task File
+# ==============================================================================
+# Purpose: Prepare RHEL 9.7 nodes for Kubernetes deployment
+# Includes: SELinux, sysctl, swap, firewall, packages
+# ==============================================================================
+
+- name: Include OS preparation tasks
+  include_tasks: "{{ item }}"
+  loop:
+    - selinux.yml
+    - sysctl.yml
+    - swap.yml
+    - firewall.yml
+    - packages.yml
+
+- name: Ensure hostname is set correctly
+  hostname:
+    name: "{{ inventory_hostname }}"
+    use: systemd
+  register: hostname_result
+  changed_when: hostname_result.changed
+
+- name: Update /etc/hosts with node hostname
+  lineinfile:
+    path: /etc/hosts
+    regexp: "^127.0.0.1\\s+localhost"
+    line: "127.0.0.1 localhost {{ inventory_hostname }}"
+    create: yes
+  register: hosts_result
+  changed_when: hosts_result.changed
+
+- name: Add control plane VIP to hosts
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ control_plane_vip }} api.k8s.local"
+    state: present
+  register: vip_hosts_result
+  changed_when: vip_hosts_result.changed
+
+- name: Configure chrony time synchronization
+  block:
+    - name: Ensure chrony is installed
+      dnf:
+        name: chrony
+        state: present
+      register: chrony_install
+      changed_when: chrony_install.changed
+
+    - name: Enable and start chrony service
+      service:
+        name: chronyd
+        enabled: yes
+        state: started
+      register: chrony_service
+      changed_when: chrony_service.changed
+
+- name: Create Kubernetes log directory
+  file:
+    path: "{{ log_directory }}"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  register: log_dir_result
+  changed_when: log_dir_result.changed
+
+- name: Display OS preparation summary
+  debug:
+    msg:
+      - "✓ RHEL 9.7 OS Preparation Completed"
+      - "  Hostname: {{ inventory_hostname }}"
+      - "  IP Address: {{ ansible_host }}"
+      - "  SELinux: {{ selinux_state }}"
+      - "  Swap: Disabled={{ disable_swap }}"
+      - "  Firewall: {{ firewalld_state }}"
+
+- name: Gather system facts
+  setup:
+  tags:
+    - always
+
+- name: Display system information
+  debug:
+    msg:
+      - "Hostname: {{ ansible_hostname }}"
+      - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Kernel: {{ ansible_kernel }}"
+      - "Architecture: {{ ansible_architecture }}"
+      - "Total Memory: {{ ansible_memtotal_mb }} MB"
+      - "CPU Cores: {{ ansible_processor_vcpus }}"
+
+- name: Verify minimum system requirements
+  assert:
+    that:
+      - ansible_memtotal_mb >= 2048
+      - ansible_processor_vcpus >= 2
+    fail_msg: "Node must have at least 2GB RAM and 2 CPU cores"
+  tags:
+    - verify
+
+# ==============================================================================
+# SECTION 2: Package Management Setup
+# ==============================================================================
+
+- name: Update package cache (RedHat family)
+  yum:
+    name: "*"
+    state: latest
+  when: ansible_os_family == "RedHat"
+  tags:
+    - packages
+    - updates
+
+- name: Update package cache (Debian family)
+  apt:
+    update_cache: yes
+    upgrade: dist
+  when: ansible_os_family == "Debian"
+  tags:
+    - packages
+    - updates
+
+# ==============================================================================
+# SECTION 3: Install System Dependencies
+# ==============================================================================
+
+- name: Install required system packages (RedHat)
+  yum:
+    name: "{{ system_packages }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+  tags:
+    - packages
+    - dependencies
+
+- name: Install required system packages (Debian)
+  apt:
+    name: "{{ system_packages }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  tags:
+    - packages
+    - dependencies
+
+# ==============================================================================
+# SECTION 4: Disable Swap (Required for Kubernetes)
+# ==============================================================================
+
+- name: Check if swap is enabled
+  shell: swapon --show | wc -l
+  register: swap_status
+  changed_when: false
+  tags:
+    - swap
+
+- name: Disable swap for current session
+  shell: swapoff -a
+  when: swap_status.stdout | int > 1
+  tags:
+    - swap
+
+- name: Remove swap from fstab to disable permanently
+  lineinfile:
+    path: /etc/fstab
+    regexp: '^[^#].*swap.*'
+    state: absent
+  when: disable_swap
+  tags:
+    - swap
+
+# ==============================================================================
+# SECTION 5: Kernel Modules Configuration
+# ==============================================================================
+
+- name: Enable required kernel modules
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+  tags:
+    - kernel
+    - network
+
+- name: Persist kernel modules
+  lineinfile:
+    path: /etc/modules-load.d/kubernetes.conf
+    line: "{{ item }}"
+    create: yes
+  loop:
+    - overlay
+    - br_netfilter
+  tags:
+    - kernel
+    - network
+
+# ==============================================================================
+# SECTION 6: Network Configuration (sysctl)
+# ==============================================================================
+
+- name: Configure kernel network parameters
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_set: yes
+    reload: yes
+  loop:
+    - { name: "net.ipv4.ip_forward", value: "1" }
+    - { name: "net.bridge.bridge-nf-call-iptables", value: "1" }
+    - { name: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+    - { name: "net.ipv4.tcp_tw_reuse", value: "1" }
+    - { name: "vm.swappiness", value: "0" }
+  tags:
+    - network
+    - sysctl
+
+# ==============================================================================
+# SECTION 7: SELinux Configuration
+# ==============================================================================
+
+- name: Disable SELinux (for non-production environments)
+  selinux:
+    state: disabled
+  when: ansible_os_family == "RedHat" and selinux_state == "disabled"
+  notify: Reboot system
+  tags:
+    - security
+    - selinux
+
+# ==============================================================================
+# SECTION 8: Firewall Configuration
+# ==============================================================================
+
+- name: Disable firewalld (RedHat)
+  systemd:
+    name: firewalld
+    state: stopped
+    enabled: no
+  ignore_errors: true
+  when: ansible_os_family == "RedHat"
+  tags:
+    - firewall
+    - network
+
+- name: Disable ufw (Debian)
+  ufw:
+    state: disabled
+  ignore_errors: true
+  when: ansible_os_family == "Debian"
+  tags:
+    - firewall
+    - network
+
+# ==============================================================================
+# SECTION 9: Create Kubernetes User and Group
+# ==============================================================================
+
+- name: Create kubernetes group
+  group:
+    name: "{{ kube_group }}"
+    state: present
+  tags:
+    - users
+
+- name: Create kubernetes user
+  user:
+    name: "{{ kube_user }}"
+    group: "{{ kube_group }}"
+    createhome: yes
+    shell: /bin/bash
+    state: present
+  tags:
+    - users
+
+# ==============================================================================
+# SECTION 10: Create Required Directories
+# ==============================================================================
+
+- name: Create Kubernetes directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/kubernetes
+    - /etc/kubernetes/pki
+    - /etc/kubernetes/pki/etcd
+    - /etc/kubernetes/manifests
+    - /var/lib/kubernetes
+    - /var/lib/kubelet
+    - /opt/cni/bin
+    - /etc/cni/net.d
+  tags:
+    - directories
+
+- name: Create backup directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ etcd_backup_path }}"
+    - "{{ kubernetes_backup_path }}"
+  when: enable_backups
+  tags:
+    - directories
+    - backups
+
+# ==============================================================================
+# SECTION 11: Install and Configure Container Runtime (Containerd)
+# ==============================================================================
+
+- name: Add Docker GPG key (Debian)
+  apt_key:
+    url: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
+    state: present
+  when: ansible_os_family == "Debian"
+  tags:
+    - container-runtime
+    - containerd
+
+- name: Add Docker repository (Debian)
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
+    state: present
+  when: ansible_os_family == "Debian"
+  tags:
+    - container-runtime
+    - containerd
+
+- name: Install containerd (Debian)
+  apt:
+    name: containerd.io
+    state: present
+  when: ansible_os_family == "Debian" and container_runtime == "containerd"
+  tags:
+    - container-runtime
+    - containerd
+
+- name: Install containerd (RedHat)
+  yum:
+    name: containerd.io
+    state: present
+  when: ansible_os_family == "RedHat" and container_runtime == "containerd"
+  tags:
+    - container-runtime
+    - containerd
+
+# ==============================================================================
+# SECTION 12: Configure Containerd
+# ==============================================================================
+
+- name: Create containerd config directory
+  file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+  tags:
+    - container-runtime
+    - containerd
+
+- name: Generate default containerd configuration
+  shell: containerd config default | tee /etc/containerd/config.toml
+  when: container_runtime == "containerd"
+  notify: Restart containerd
+  tags:
+    - container-runtime
+    - containerd
+
+- name: Configure containerd to use systemd cgroup driver
+  lineinfile:
+    path: /etc/containerd/config.toml
+    regexp: 'systemd_cgroup = false'
+    line: '            systemd_cgroup = true'
+  when: container_runtime == "containerd"
+  notify: Restart containerd
+  tags:
+    - container-runtime
+    - containerd
+
+# ==============================================================================
+# SECTION 13: Install CNI Plugins
+# ==============================================================================
+
+- name: Download CNI plugins
+  get_url:
+    url: "https://github.com/containernetworking/plugins/releases/download/v{{ cni_plugins_version }}/cni-plugins-linux-{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}-v{{ cni_plugins_version }}.tgz"
+    dest: /tmp/cni-plugins.tgz
+  tags:
+    - cni
+
+- name: Extract CNI plugins
+  unarchive:
+    src: /tmp/cni-plugins.tgz
+    dest: /opt/cni/bin
+    remote_src: yes
+    creates: /opt/cni/bin/bridge
+  tags:
+    - cni
+
+- name: Set CNI plugins permissions
+  file:
+    path: /opt/cni/bin
+    mode: '0755'
+    recurse: yes
+  tags:
+    - cni
+
+# ==============================================================================
+# SECTION 14: Add Kubernetes Repository
+# ==============================================================================
+
+- name: Add Kubernetes GPG key (Debian)
+  apt_key:
+    url: "{{ kubernetes_repo_key_url }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  tags:
+    - kubernetes-repo
+
+- name: Add Kubernetes repository (Debian)
+  apt_repository:
+    repo: "deb {{ kubernetes_repo_url }} kubernetes-xenial main"
+    state: present
+  when: ansible_os_family == "Debian"
+  tags:
+    - kubernetes-repo
+
+- name: Add Kubernetes repository (RedHat)
+  yum_repository:
+    name: kubernetes
+    description: Kubernetes
+    baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+    gpgkey: "{{ kubernetes_repo_key_url }}"
+    gpgcheck: yes
+  when: ansible_os_family == "RedHat"
+  tags:
+    - kubernetes-repo
+
+# ==============================================================================
+# SECTION 15: Install Kubernetes Binaries
+# ==============================================================================
+
+- name: Install kubeadm, kubelet, kubectl (Debian)
+  apt:
+    name: "{{ item }}={{ kubernetes_version }}-*"
+    state: present
+    allow_unauthenticated: yes
+  loop:
+    - kubeadm
+    - kubelet
+    - kubectl
+  when: ansible_os_family == "Debian"
+  tags:
+    - kubernetes
+    - k8s-binaries
+
+- name: Install kubeadm, kubelet, kubectl (RedHat)
+  yum:
+    name: "{{ item }}-{{ kubernetes_version }}-*"
+    state: present
+  loop:
+    - kubeadm
+    - kubelet
+    - kubectl
+  when: ansible_os_family == "RedHat"
+  tags:
+    - kubernetes
+    - k8s-binaries
+
+- name: Hold Kubernetes package versions (Debian)
+  dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubeadm
+    - kubelet
+    - kubectl
+  when: ansible_os_family == "Debian"
+  tags:
+    - kubernetes
+    - k8s-binaries
+
+# ==============================================================================
+# SECTION 16: Configure kubelet
+# ==============================================================================
+
+- name: Create kubelet systemd directory
+  file:
+    path: /etc/systemd/system/kubelet.service.d
+    state: directory
+    mode: '0755'
+  tags:
+    - kubelet
+    - systemd
+
+- name: Configure kubelet drop-in
+  copy:
+    content: |
+      [Service]
+      Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
+      Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/kubeadm-flags.env"
+      ExecStart=
+      ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_EXTRA_ARGS
+    dest: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+  notify: Restart kubelet
+  tags:
+    - kubelet
+    - systemd
+
+# ==============================================================================
+# SECTION 17: Enable and Start Services
+# ==============================================================================
+
+- name: Enable containerd service
+  systemd:
+    name: containerd
+    state: started
+    enabled: yes
+    daemon_reload: yes
+  when: container_runtime == "containerd"
+  tags:
+    - services
+    - startup
+
+- name: Enable kubelet service (do not start yet)
+  systemd:
+    name: kubelet
+    enabled: yes
+    daemon_reload: yes
+  tags:
+    - services
+    - startup
+
+# ==============================================================================
+# SECTION 18: System Optimization
+# ==============================================================================
+
+- name: Increase file descriptor limits
+  lineinfile:
+    path: /etc/security/limits.conf
+    line: "{{ item }}"
+  loop:
+    - "* soft nofile {{ max_open_files }}"
+    - "* hard nofile {{ max_open_files }}"
+  notify: Reboot system
+  tags:
+    - optimization
+    - limits
+
+# ==============================================================================
+# SECTION 19: Cleanup and Verify
+# ==============================================================================
+
+- name: Clean up temporary files
+  file:
+    path: /tmp/cni-plugins.tgz
+    state: absent
+  tags:
+    - cleanup
+
+- name: Verify system is ready for Kubernetes
+  shell: |
+    echo "Checking system requirements..."
+    echo "✓ Swap disabled: $(swapon --show | wc -l | awk '{if($1==1) print "Yes"; else print "No"}')"
+    echo "✓ Forwarding enabled: $(cat /proc/sys/net/ipv4/ip_forward)"
+    echo "✓ Kernel modules loaded: $(lsmod | grep -c 'overlay')"
+    echo "System ready for Kubernetes!"
+  register: verification_result
+  changed_when: false
+  tags:
+    - verify
+    - always
+
+- name: Display verification results
+  debug:
+    msg: "{{ verification_result.stdout_lines }}"
+  tags:
+    - verify
+    - always

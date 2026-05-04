@@ -1,0 +1,152 @@
+---
+# ==============================================================================
+# Role: vm_provisioning
+# Description: Clone and provision virtual machines from templates
+# ==============================================================================
+
+- name: Provision Virtual Machines
+  block:
+    - name: Query available templates
+      vmware.rest.vcenter_vm_template_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+      register: available_templates
+      tags:
+        - vm_templates_query
+
+    - name: Display available templates
+      debug:
+        msg: |
+          Available VM Templates:
+          {% for template in available_templates.value | default([]) %}
+          - {{ template.name }} ({{ template.vm }})
+          {% endfor %}
+        verbosity: 1
+      tags:
+        - vm_templates_query
+        - debug
+
+    - name: Clone VM from template
+      vmware.rest.vcenter_vm_create_clone:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        name: "{{ vm.name }}"
+        source_vm: "{{ vm.template }}"
+        datacenter: "{{ vm.datacenter }}"
+        folder: "{{ vm.folder | default(omit) }}"
+        datastore: "{{ vm.datastore }}"
+        resource_pool: "{{ vm.resource_pool | default(omit) }}"
+        state: present
+      register: vm_clone_result
+      loop: "{{ day1_config.virtual_machines | default([]) }}"
+      loop_control:
+        loop_var: vm
+      tags:
+        - vm_clone
+
+    - name: Display VM clone results
+      debug:
+        msg: |
+          VM Clone Results:
+          Name: {{ item.result.name | default('N/A') }}
+          ID: {{ item.result.vm | default('N/A') }}
+          State: {{ item.result.state | default('N/A') }}
+      loop: "{{ vm_clone_result.results | default([]) }}"
+      when: vm_clone_result.results is defined
+      tags:
+        - vm_clone
+        - debug
+
+    - name: Update VM hardware configuration
+      vmware.rest.vcenter_vm_hardware_update:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ vm.name }}"
+        cpu_count: "{{ vm.cpu | default(2) }}"
+        memory_size_MiB: "{{ vm.memory_mb | default(4096) }}"
+      register: vm_hardware_update
+      loop: "{{ day1_config.virtual_machines | default([]) }}"
+      loop_control:
+        loop_var: vm
+      tags:
+        - vm_hardware
+
+    - name: Configure VM network interfaces
+      vmware.rest.vcenter_vm_hardware_ethernet:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ vm.name }}"
+        nic: "{{ nic_idx }}"
+        network: "{{ vm_network.name }}"
+        wake_on_lan_enabled: true
+      register: vm_nic_config
+      loop: "{{ day1_config.virtual_machines | default([]) }}"
+      loop_control:
+        loop_var: vm
+      vars:
+        nic_idx: 0
+      tags:
+        - vm_network
+
+    - name: Add additional disks to VM
+      vmware.rest.vcenter_vm_hardware_disk_create:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ vm.name }}"
+        datastore: "{{ disk.datastore | default(vm.datastore) }}"
+        size_MiB: "{{ (disk.size_gb | default(10)) * 1024 }}"
+      register: vm_disk_add
+      loop: "{{ day1_config.virtual_machines | default([]) | subelements('disks', skip_missing=True) }}"
+      loop_control:
+        loop_var: disk
+      tags:
+        - vm_disks
+
+    - name: Power on virtual machines
+      vmware.rest.vcenter_vm_power:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vault_vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: "{{ vm.name }}"
+        state: present
+      register: vm_power_on
+      loop: "{{ day1_config.virtual_machines | default([]) }}"
+      loop_control:
+        loop_var: vm
+      tags:
+        - vm_power
+
+    - name: Display VM provisioning results
+      debug:
+        msg: |
+          VM Provisioning Summary:
+          Total VMs Cloned: {{ vm_clone_result.results | default([]) | length }}
+          VMs Powered On: {{ vm_power_on.results | default([]) | length }}
+        verbosity: 0
+      tags:
+        - vm_provisioning_summary
+
+  rescue:
+    - name: Handle VM provisioning error
+      debug:
+        msg: |
+          Error provisioning virtual machines:
+          {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags:
+        - error_handling
+
+  tags:
+    - vm_provisioning
+    - day1
+    - provisioning

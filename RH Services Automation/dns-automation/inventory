@@ -1,0 +1,14 @@
+[control_node]
+workstation.lab.example.com
+
+[caching_dns]
+dns1.example.com
+dns2.example.com
+
+[primary_dns]
+instructor.example.com
+
+[secondary_dns]
+ns1.example.com
+ns2.example.com
+

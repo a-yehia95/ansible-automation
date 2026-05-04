@@ -1,0 +1,138 @@
+---
+# ==============================================================================
+# DVS Role - Tasks
+# ==============================================================================
+# Creates and manages Distributed Virtual Switches and port groups
+
+- name: Display DVS management information
+  debug:
+    msg:
+      - "=========================================="
+      - "Distributed Virtual Switch Management"
+      - "=========================================="
+      - "vCenter: {{ vcenter_hostname }}"
+      - "State: {{ dvs_state }}"
+      - "DVS Switches: {{ dvs_switches | length }}"
+      - "Port Groups: {{ port_groups | length }}"
+      - "=========================================="
+  tags:
+    - day0
+    - dvs
+    - always
+
+# ==============================================================================
+# Create Distributed Virtual Switches
+# ==============================================================================
+
+- name: Create distributed virtual switches
+  vmware_dvs_switch:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    datacenter_name: "{{ item.datacenter }}"
+    switch_name: "{{ item.name }}"
+    description: "{{ item.description | default('') }}"
+    mtu: "{{ item.mtu | default(1500) }}"
+    uplink_quantity: "{{ item.num_uplinks | default(2) }}"
+    uplink_prefix: "{{ item.uplink_prefix | default('Uplink') }}"
+    discovery_proto: "{{ item.discovery_protocol | default('lldp') }}"
+    discovery_proto_operation: "{{ item.discovery_protocol_operation | default('both') }}"
+    state: "{{ dvs_state }}"
+  loop: "{{ dvs_switches }}"
+  delegate_to: localhost
+  tags:
+    - day0
+    - dvs
+    - create
+
+# ==============================================================================
+# Create Distributed Port Groups
+# ==============================================================================
+
+- name: Create distributed port groups
+  vmware_dvs_portgroup:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    switch_name: "{{ item.dvs }}"
+    portgroup_name: "{{ item.name }}"
+    portgroup_type: "earlyBinding"
+    vlan_id: "{{ item.vlan_id | default(0) }}"
+    description: "{{ item.description | default('') }}"
+    state: "{{ port_group_state }}"
+  loop: "{{ port_groups }}"
+  delegate_to: localhost
+  tags:
+    - day0
+    - dvs
+    - port-groups
+    - create
+
+# ==============================================================================
+# Gather DVS Information
+# ==============================================================================
+
+- name: Gather DVS switch information
+  vmware_dvs_switch_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    datacenter: "{{ item.datacenter }}"
+    switch_name: "{{ item.name }}"
+  loop: "{{ dvs_switches }}"
+  delegate_to: localhost
+  register: dvs_info
+  tags:
+    - day0
+    - dvs
+    - info
+
+- name: Gather port group information
+  vmware_dvs_portgroup_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    switch_name: "{{ item.dvs | unique }}"
+  loop: "{{ port_groups }}"
+  delegate_to: localhost
+  register: portgroup_info
+  tags:
+    - day0
+    - dvs
+    - port-groups
+    - info
+
+- name: Display DVS information
+  debug:
+    msg:
+      - "DVS: {{ item.item.name }}"
+      - "Uplinks: {{ item.switch_info[item.item.name]['uplink_quantity'] | default('N/A') }}"
+      - "MTU: {{ item.switch_info[item.item.name]['mtu'] | default('N/A') }}"
+  loop: "{{ dvs_info.results }}"
+  tags:
+    - day0
+    - dvs
+    - info
+    - always
+
+- name: Display port group information
+  debug:
+    msg:
+      - "Port Group: {{ item.item.name }}"
+      - "VLAN: {{ item.portgroup_info[item.item.name][0]['vlan_id'] | default('Trunk') }}"
+  loop: "{{ portgroup_info.results }}"
+  when: item.item.name in item.portgroup_info
+  tags:
+    - day0
+    - dvs
+    - port-groups
+    - info
+    - always

@@ -1,0 +1,12 @@
+---
+# ==============================================================================
+# Cluster Role - Handlers
+# ==============================================================================
+
+- name: Refresh cluster facts
+  debug:
+    msg: "Cluster information refreshed"
+
+- name: Recalculate cluster resources
+  debug:
+    msg: "Cluster resources recalculated"

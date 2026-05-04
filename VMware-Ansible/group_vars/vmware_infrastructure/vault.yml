@@ -1,0 +1,28 @@
+---
+# ==============================================================================
+# VMware Vault - Encrypted Credentials
+# ==============================================================================
+# This file contains sensitive credentials encrypted with Ansible Vault
+# Create with: ansible-vault create group_vars/vmware_infrastructure/vault.yml
+# Edit with: ansible-vault edit group_vars/vmware_infrastructure/vault.yml
+#
+# EXAMPLE ENCRYPTED CONTENT (decrypt with your vault password):
+# ---
+# vault_vcenter_hostname: "vcenter.example.com"
+# vault_vcenter_username: "administrator@vsphere.local"
+# vault_vcenter_password: "VerySecurePassword123!"
+# vault_ntp_server: "ntp.example.com"
+# vault_dns_servers:
+#   - 8.8.8.8
+#   - 8.8.4.4
+#
+# TO CREATE THIS FILE:
+# 1. Run: ansible-vault create group_vars/vmware_infrastructure/vault.yml
+# 2. Add your vault variables
+# 3. Save and exit
+#
+# TO EDIT THIS FILE:
+# ansible-vault edit group_vars/vmware_infrastructure/vault.yml
+#
+# TO VIEW THIS FILE:
+# ansible-vault view group_vars/vmware_infrastructure/vault.yml

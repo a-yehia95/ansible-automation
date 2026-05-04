@@ -1,0 +1,44 @@
+---
+# ==============================================================================
+# Common Role - Swap Configuration
+# ==============================================================================
+
+- name: Get swap status
+  command: swapon --show
+  register: swap_status
+  changed_when: false
+  failed_when: false
+
+- name: Disable swap if enabled
+  block:
+    - name: Display swap disabling message
+      debug:
+        msg: "Disabling swap (required for Kubernetes)"
+      when: swap_status.stdout | length > 0
+
+    - name: Disable all swaps
+      command: swapoff -a
+      register: swapoff_result
+      changed_when: swapoff_result.changed
+      when: swap_status.stdout | length > 0
+
+    - name: Disable swap in fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: "^.*swap.*$"
+        line: ""
+        state: present
+      register: fstab_swap
+      changed_when: fstab_swap.changed
+
+- name: Verify swap is disabled
+  block:
+    - name: Check swap status
+      command: swapon --show
+      register: swap_verification
+      changed_when: false
+      failed_when: false
+
+    - name: Display swap status
+      debug:
+        msg: "Swap: {{ 'Disabled ✓' if swap_verification.stdout | length == 0 else 'WARNING: Still enabled' }}"

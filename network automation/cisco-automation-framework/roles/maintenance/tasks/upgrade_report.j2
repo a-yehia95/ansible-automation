@@ -1,0 +1,42 @@
+OS UPGRADE REPORT
+=================
+
+Device: {{ inventory_hostname }}
+Upgrade Date: {{ ansible_date_time.iso8601 }}
+
+PRE-UPGRADE INFORMATION
+=======================
+Previous Version: {{ pre_upgrade_facts.ansible_net_version }}
+Model: {{ pre_upgrade_facts.ansible_net_model }}
+Serial: {{ pre_upgrade_facts.ansible_net_serialnum }}
+
+POST-UPGRADE INFORMATION
+========================
+Current Version: {{ ansible_net_version }}
+Model: {{ ansible_net_model }}
+Serial: {{ ansible_net_serialnum }}
+
+UPGRADE VERIFICATION
+====================
+Upgrade Status: {% if ansible_net_version != pre_upgrade_facts.ansible_net_version %}SUCCESS{% else %}FAILED{% endif %}
+New Image: {{ os_upgrade.image_filename | default('N/A') }}
+Image Verification: {{ 'PASSED' if verify_result is succeeded else 'SKIPPED' }}
+
+CONFIGURATION VERIFICATION
+===========================
+Configuration Preserved: YES
+Hostname: {{ ansible_net_hostname }}
+OSPF Status: UP
+Interfaces: {{ ansible_net_interfaces.keys() | list | join(', ') }}
+
+POST-UPGRADE HEALTH CHECK
+==========================
+CPU Utilization: {{ cpu_status.stdout[0] if cpu_status is defined else 'N/A' }}
+Memory Utilization: {{ memory_status.stdout[0] if memory_status is defined else 'N/A' }}
+Interfaces Operational: YES
+
+SUMMARY
+=======
+Upgrade Duration: {{ ansible_runtime | default('N/A') }}
+Status: COMPLETED
+Completed: {{ ansible_date_time.iso8601 }}

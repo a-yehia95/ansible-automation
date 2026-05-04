@@ -1,0 +1,102 @@
+---
+# ==============================================================================
+# Main Day 1 Playbook - VM Provisioning
+# ==============================================================================
+# Orchestrates VM provisioning from templates with customization and hardware adjustments
+#
+# Prerequisites:
+#   - Day 0 foundation infrastructure setup completed
+#   - VM templates available in vCenter
+#   - VM variables defined (vm_name, vm_template, etc.)
+#
+# Usage:
+#   ansible-playbook playbooks/day1/provision.yml --vault-password-file=.vault_pass
+#   ansible-playbook playbooks/day1/provision.yml --extra-vars="vm_name=myvm vm_template=centos-9-base"
+#   ansible-playbook playbooks/day1/provision.yml --tags=clone,hardware -v
+
+---
+- name: "Day 1 - VM Provisioning from Templates"
+  hosts: vmware_infrastructure
+  gather_facts: true
+  vars_files:
+    - ../../group_vars/vmware_infrastructure.yml
+
+  pre_tasks:
+    - name: Display provisioning information
+      debug:
+        msg:
+          - "=========================================="
+          - "Day 1: VM Provisioning"
+          - "=========================================="
+          - "Operation: Clone VM from template"
+          - "VM Name: {{ vm_name | default('NOT PROVIDED') }}"
+          - "Template: {{ vm_template | default('NOT PROVIDED') }}"
+          - "Datacenter: {{ datacenter_name }}"
+          - "=========================================="
+      tags:
+        - day1
+        - always
+
+    - name: Validate provisioning variables
+      assert:
+        that:
+          - vm_name is defined
+          - vm_template is defined
+          - datacenter_name is defined
+        fail_msg: |
+          Missing required variables for VM provisioning:
+          - vm_name: Name of new VM
+          - vm_template: Name of source template
+          - datacenter_name: Target datacenter
+          
+          Example:
+          ansible-playbook playbooks/day1/provision.yml \
+            --extra-vars='vm_name=web-srv-01 vm_template=centos-9-base datacenter_name=Primary-DC'
+      tags:
+        - day1
+        - validate
+        - always
+
+  roles:
+    - role: provisioning/vm_clone
+      tags:
+        - day1
+        - provisioning
+        - clone
+
+    - role: provisioning/customization
+      tags:
+        - day1
+        - provisioning
+        - customization
+
+    - role: provisioning/hardware
+      tags:
+        - day1
+        - provisioning
+        - hardware
+
+  post_tasks:
+    - name: Display Day 1 provisioning summary
+      debug:
+        msg:
+          - ""
+          - "=========================================="
+          - "✓ Day 1 VM Provisioning Complete"
+          - "=========================================="
+          - "VM Successfully Provisioned:"
+          - "- Name: {{ vm_name }}"
+          - "- Template: {{ vm_template }}"
+          - "- Status: Ready for workload"
+          - ""
+          - "Next Steps:"
+          - "1. Verify VM connectivity and performance"
+          - "2. Configure guest OS (firewall, services, etc.)"
+          - "3. Deploy applications"
+          - "4. Proceed to Day 2 for ongoing administration"
+          - "   ansible-playbook playbooks/day2/admin.yml"
+          - ""
+          - "=========================================="
+      tags:
+        - day1
+        - always

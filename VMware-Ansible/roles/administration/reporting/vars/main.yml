@@ -1,0 +1,11 @@
+---
+# ==============================================================================
+# Reporting Role - Vars
+# ==============================================================================
+
+report_format: "csv"  # Options: csv, json, html
+report_directory: "/tmp/vmware_reports"
+include_vm_inventory: true
+include_host_status: true
+include_snapshot_info: true
+include_datastore_info: true

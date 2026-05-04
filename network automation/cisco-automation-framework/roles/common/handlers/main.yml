@@ -1,0 +1,6 @@
+---
+# Handlers for common role
+
+- name: Configuration saved
+  debug:
+    msg: "Device {{ inventory_hostname }} configuration saved to startup-config"

@@ -1,0 +1,56 @@
+- name: Boot VM with CentOS 7 installation iso in CDROM
+  vmware_guest:
+     validate_certs: False
+     hostname: '{{ vcenter_hostname }}'
+     username: '{{ vcenter_username }}'
+     password: '{{ vcenter_password }}'
+     datacenter: "{{ dc1 }}"
+     state: poweredon
+     cluster: Asia-Cluster1
+     disk:
+     - size_gb: 10
+       type: thin
+       datastore: ds_171_2
+     cdrom:
+     - controller_number: 0
+       unit_number: 0
+       state: present
+       type: iso
+       iso_path: "[ds_171_2] isos/CentOS-7.0-1406-x86_64-DVD.iso"
+     hardware:
+       memory_mb: 2048
+       num_cpus: 2
+       num_cpu_cores_per_socket: 2
+     name:  "{{ hostname }}"
+     folder: /Asia-Datacenter1/vm/prod
+     guest_id: centos7_64Guest
+     networks:
+     - name: "privatepg"
+
+- name: Handle boot parameter interactively
+  vmware_guest_sendkey:
+    validate_certs: False
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    name: "{{ hostname }}"
+    keys_send:
+    - ESC
+    - ESC
+    string_send: 'vmlinuz initrd=initrd.img inst.ks=http://{{ httpd_ip }}:{{ httpd_port }}/{{ kickstart_file }}'
+  delegate_to: localhost
+  vars:
+    kickstart_file: kickstart.cfg
+    httpd_ip: 192.168.10.1
+    httpd_port: 9000
+  
+- name: Start the process after providing boot parameter at installation prompt
+  vmware_guest_sendkey:
+    validate_certs: False
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    name: "{{ hostname }}"
+    keys_send:
+    - ENTER
+  delegate_to: localhost

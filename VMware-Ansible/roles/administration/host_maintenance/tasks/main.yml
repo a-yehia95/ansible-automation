@@ -1,0 +1,187 @@
+---
+# ==============================================================================
+# Host Maintenance Role - Tasks
+# ==============================================================================
+# Manages ESXi host maintenance mode and vMotion operations
+
+- name: Display host maintenance information
+  debug:
+    msg:
+      - "=========================================="
+      - "ESXi Host Maintenance Mode Management"
+      - "=========================================="
+      - "Cluster: {{ cluster_name }}"
+      - "Hosts: {{ esxi_hosts | length }}"
+      - "Operation: {{ maintenance_mode }}"
+      - "=========================================="
+  tags:
+    - day2
+    - administration
+    - maintenance
+    - always
+
+# ==============================================================================
+# Get Host Information
+# ==============================================================================
+
+- name: Get host information
+  vmware_host_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    cluster_name: "{{ cluster_name }}"
+  delegate_to: localhost
+  register: host_info
+  tags:
+    - day2
+    - administration
+    - maintenance
+    - info
+
+- name: Display host information
+  debug:
+    msg:
+      - "Hosts in cluster {{ cluster_name }}:"
+      - "{{ host_info.hosts.keys() | list }}"
+  tags:
+    - day2
+    - administration
+    - maintenance
+    - info
+    - always
+
+# ==============================================================================
+# Enter Maintenance Mode
+# ==============================================================================
+
+- name: Enter maintenance mode for each host
+  vmware_host:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    esxi_hostname: "{{ item }}"
+    state: maintenance
+    evacuate_powered_off_vms: "{{ evacuate_powered_off_vms }}"
+    timeout: "{{ timeout_seconds }}"
+  loop: "{{ esxi_hosts | default([]) }}"
+  delegate_to: localhost
+  when:
+    - maintenance_mode == "enter"
+    - esxi_hosts is defined
+  tags:
+    - day2
+    - administration
+    - maintenance
+    - enter
+
+# ==============================================================================
+# Wait for vMotion to Complete During Maintenance Mode Entry
+# ==============================================================================
+
+- name: Wait for host to enter maintenance mode
+  vmware_host_facts:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    esxi_hostname: "{{ item }}"
+  loop: "{{ esxi_hosts | default([]) }}"
+  delegate_to: localhost
+  register: host_facts
+  until: host_facts.ansible_facts.ansible_host_state == "maintenance"
+  retries: 120
+  delay: 5
+  when:
+    - maintenance_mode == "enter"
+    - esxi_hosts is defined
+  tags:
+    - day2
+    - administration
+    - maintenance
+    - verify
+
+- name: Display maintenance mode status
+  debug:
+    msg:
+      - "Host {{ item.esxi_hostname }}: {{ item.ansible_facts.ansible_host_state }}"
+  loop: "{{ host_facts.results }}"
+  when:
+    - maintenance_mode == "enter"
+    - host_facts is defined
+  tags:
+    - day2
+    - administration
+    - maintenance
+    - verify
+    - always
+
+# ==============================================================================
+# Exit Maintenance Mode
+# ==============================================================================
+
+- name: Exit maintenance mode for each host
+  vmware_host:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    esxi_hostname: "{{ item }}"
+    state: present
+  loop: "{{ esxi_hosts | default([]) }}"
+  delegate_to: localhost
+  when:
+    - maintenance_mode == "exit"
+    - esxi_hosts is defined
+  tags:
+    - day2
+    - administration
+    - maintenance
+    - exit
+
+# ==============================================================================
+# Verify Maintenance Mode Exit
+# ==============================================================================
+
+- name: Verify host exited maintenance mode
+  vmware_host_facts:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    esxi_hostname: "{{ item }}"
+  loop: "{{ esxi_hosts | default([]) }}"
+  delegate_to: localhost
+  register: exit_host_facts
+  until: exit_host_facts.ansible_facts.ansible_host_state != "maintenance"
+  retries: 60
+  delay: 5
+  when:
+    - maintenance_mode == "exit"
+    - esxi_hosts is defined
+  tags:
+    - day2
+    - administration
+    - maintenance
+    - exit-verify
+
+- name: Display exit status
+  debug:
+    msg:
+      - "Host {{ item.esxi_hostname }} state: {{ item.ansible_facts.ansible_host_state }}"
+  loop: "{{ exit_host_facts.results }}"
+  when:
+    - maintenance_mode == "exit"
+    - exit_host_facts is defined
+  tags:
+    - day2
+    - administration
+    - maintenance
+    - exit-verify
+    - always

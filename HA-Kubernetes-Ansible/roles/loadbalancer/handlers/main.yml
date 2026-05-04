@@ -1,0 +1,16 @@
+---
+# ==============================================================================
+# Load Balancer Role - Handlers
+# ==============================================================================
+
+- name: Restart haproxy
+  service:
+    name: haproxy
+    state: restarted
+    daemon_reload: yes
+
+- name: Restart keepalived
+  service:
+    name: keepalived
+    state: restarted
+    daemon_reload: yes

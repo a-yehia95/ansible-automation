@@ -1,0 +1,13 @@
+---
+# ==============================================================================
+# Worker Role Variables
+# ==============================================================================
+
+# Worker node configuration
+kubelet_max_pods: 110
+kubelet_system_reserved_cpu: "100m"
+kubelet_system_reserved_memory: "100Mi"
+
+# Worker node labels
+worker_labels:
+  - "node-role.kubernetes.io/worker=true"

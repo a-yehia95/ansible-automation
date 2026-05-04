@@ -1,0 +1,20 @@
+---
+# ==============================================================================
+# Role: vm_snapshots - Defaults
+# ==============================================================================
+
+snapshot_create_enabled: true
+snapshot_revert_enabled: false
+snapshot_delete_enabled: false
+snapshot_consolidate_enabled: false
+
+# Snapshot Defaults
+snapshot_include_memory: false
+snapshot_quiesce: false
+snapshot_retention_days: 7
+
+# Snapshots to manage
+snapshots_to_create: []
+snapshots_to_revert: []
+snapshots_to_delete: []
+vms_to_consolidate: []

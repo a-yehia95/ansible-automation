@@ -1,0 +1,103 @@
+---
+# ==============================================================================
+# Folders Role - Tasks
+# ==============================================================================
+# Creates and manages VM folder hierarchy in vCenter
+
+- name: Display folder management information
+  debug:
+    msg:
+      - "=========================================="
+      - "VM Folder Management"
+      - "=========================================="
+      - "vCenter: {{ vcenter_hostname }}"
+      - "State: {{ folder_state }}"
+      - "Folder Structures: {{ vm_folders | length }}"
+      - "=========================================="
+  tags:
+    - day0
+    - folders
+    - always
+
+# ==============================================================================
+# Create Parent Folders
+# ==============================================================================
+
+- name: Create parent VM folders
+  vcenter_folder:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    datacenter: "{{ item.datacenter }}"
+    folder_name: "{{ item.name }}"
+    folder_type: vm
+    state: "{{ folder_state }}"
+  loop: "{{ vm_folders | selectattr('parent', 'equalto', '/') | list }}"
+  delegate_to: localhost
+  tags:
+    - day0
+    - folders
+    - create
+
+# ==============================================================================
+# Create Nested Child Folders
+# ==============================================================================
+
+- name: Create nested child VM folders
+  vcenter_folder:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    datacenter: "{{ parent_folder.datacenter }}"
+    folder_name: "{{ child_folder }}"
+    parent_folder: "{{ parent_folder.name }}"
+    folder_type: vm
+    state: "{{ folder_state }}"
+  vars:
+    parent_folder: "{{ item }}"
+  loop: "{{ vm_folders | selectattr('children', 'defined') | list }}"
+  loop_control:
+    label: "{{ parent_folder.name }}"
+  with_nested:
+    - "{{ item.children | default([]) }}"
+  tags:
+    - day0
+    - folders
+    - create
+
+# ==============================================================================
+# Gather Folder Facts
+# ==============================================================================
+
+- name: Gather VM folder information
+  vmware_folder_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    port: "{{ vcenter_port }}"
+    validate_certs: "{{ vcenter_validate_certs }}"
+    datacenter: "{{ item.datacenter }}"
+  loop: "{{ vm_folders }}"
+  delegate_to: localhost
+  register: folder_info
+  tags:
+    - day0
+    - folders
+    - info
+
+- name: Display folder structure
+  debug:
+    msg:
+      - "Datacenter: {{ item.item.datacenter }}"
+      - "Folder Structure:"
+      - "{{ item.folder_info | to_nice_json }}"
+  loop: "{{ folder_info.results }}"
+  tags:
+    - day0
+    - folders
+    - info
+    - always

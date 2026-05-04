@@ -1,0 +1,111 @@
+---
+# ==============================================================================
+# Kubeadm Master Join Role - Main Task File
+# ==============================================================================
+# Purpose: Join additional master nodes to the Kubernetes cluster
+# Requires certificate key from the first master initialization
+# ==============================================================================
+
+- name: Pre-flight checks for master join
+  block:
+    - name: Check if node already joined
+      stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: kubelet_conf
+      changed_when: false
+
+    - name: Display join status
+      debug:
+        msg: "{{ 'Node already joined' if kubelet_conf.stat.exists else 'Ready to join cluster' }}"
+
+- name: Fetch join information from first master
+  block:
+    - name: Retrieve join information from master01
+      set_fact:
+        k8s_cert_key: "{{ hostvars['master01']['k8s_cert_key'] | default('') }}"
+        k8s_bootstrap_token: "{{ hostvars['master01']['k8s_bootstrap_token'] | default('') }}"
+        k8s_token_ca_hash: "{{ hostvars['master01']['k8s_token_ca_hash'] | default('') }}"
+        k8s_api_endpoint: "{{ control_plane_endpoint }}"
+      when: hostvars['master01']['k8s_cert_key'] is defined
+
+    - name: Verify join information availability
+      assert:
+        that:
+          - k8s_cert_key | length > 0
+          - k8s_bootstrap_token | length > 0
+          - k8s_token_ca_hash | length > 0
+        fail_msg: "Join information not available from master01"
+        success_msg: "Join information retrieved successfully"
+
+- name: Join master node to cluster
+  block:
+    - name: Run kubeadm join for control plane
+      command: >
+        kubeadm join {{ k8s_api_endpoint }}
+        --token {{ k8s_bootstrap_token }}
+        --discovery-token-ca-cert-hash sha256:{{ k8s_token_ca_hash }}
+        --control-plane
+        --certificate-key {{ k8s_cert_key }}
+        --cri-socket unix:///run/crio/crio.sock
+      register: kubeadm_join_result
+      changed_when: kubeadm_join_result.changed
+      failed_when:
+        - kubeadm_join_result.rc != 0
+        - "'already' not in kubeadm_join_result.stderr"
+      when: not kubelet_conf.stat.exists
+
+    - name: Display kubeadm join output
+      debug:
+        msg: "{{ kubeadm_join_result.stdout_lines | default(['Node already joined']) }}"
+
+  rescue:
+    - name: Display join error
+      debug:
+        msg: "{{ kubeadm_join_result.stderr_lines | default(['Unknown error']) }}"
+    - fail:
+        msg: "kubeadm join for control plane failed"
+
+- name: Configure kubeconfig for root user
+  block:
+    - name: Ensure .kube directory exists
+      file:
+        path: /root/.kube
+        state: directory
+        mode: "0755"
+
+    - name: Copy admin.conf to kubeconfig
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+        mode: "0600"
+        owner: root
+        group: root
+      register: kubeconfig_copy
+      changed_when: kubeconfig_copy.changed
+
+    - name: Verify kubeconfig
+      command: kubectl cluster-info
+      register: cluster_info
+      changed_when: false
+      failed_when: cluster_info.rc != 0
+      retries: 3
+      delay: 10
+
+- name: Wait for node to be ready
+  block:
+    - name: Get node readiness status
+      command: >
+        kubectl get node {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+      register: node_ready
+      changed_when: false
+      until: node_ready.stdout == "True"
+      retries: 30
+      delay: 10
+
+    - name: Display master node join status
+      debug:
+        msg:
+          - "✓ Master Node Successfully Joined"
+          - "  Node: {{ inventory_hostname }}"
+          - "  Status: Ready"

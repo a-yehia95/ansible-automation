@@ -1,0 +1,271 @@
+---
+# ==============================================================================
+# Role: cis_file_permissions - File Permission and Ownership Hardening
+# ==============================================================================
+# Purpose: Configure critical file permissions and ensure proper ownership
+
+- name: CIS 6.1 - System file permissions
+  block:
+    - name: Configure /etc/passwd permissions (CIS 6.1.2)
+      file:
+        path: /etc/passwd
+        owner: root
+        group: root
+        mode: "0644"
+      tags:
+        - cis_6_1_2
+        - file_permissions
+
+    - name: Configure /etc/shadow permissions (CIS 6.1.3)
+      file:
+        path: /etc/shadow
+        owner: root
+        group: root
+        mode: "0600"
+      tags:
+        - cis_6_1_3
+        - file_permissions
+
+    - name: Configure /etc/group permissions (CIS 6.1.4)
+      file:
+        path: /etc/group
+        owner: root
+        group: root
+        mode: "0644"
+      tags:
+        - cis_6_1_4
+        - file_permissions
+
+    - name: Configure /etc/gshadow permissions (CIS 6.1.5)
+      file:
+        path: /etc/gshadow
+        owner: root
+        group: root
+        mode: "0600"
+      tags:
+        - cis_6_1_5
+        - file_permissions
+
+    - name: Configure SSH config permissions (CIS 6.1.10)
+      file:
+        path: /etc/ssh/sshd_config
+        owner: root
+        group: root
+        mode: "0600"
+      tags:
+        - cis_6_1_10
+        - file_permissions
+        - ssh
+
+    - name: Configure sudoers permissions
+      file:
+        path: /etc/sudoers
+        owner: root
+        group: root
+        mode: "0440"
+      tags:
+        - cis_6_1
+        - file_permissions
+
+    - name: Display system file permissions
+      debug:
+        msg: "Critical system files permissions configured"
+      tags:
+        - file_permissions
+        - always
+
+  tags:
+    - cis_6_1
+    - file_permissions
+
+- name: CIS 6.2 - Local user and group settings
+  block:
+    - name: Ensure users own their home directories (CIS 6.2.12)
+      shell: |
+        set -o pipefail
+        grep -E '^[^:]+:[^:]*:[0-9]{4}' /etc/passwd | while IFS=: read -r user pass uid gid gecos home shell; do
+          if [ ! -z "$home" ] && [ -d "$home" ]; then
+            if [ "$(stat -c '%U' "$home")" != "$user" ]; then
+              chown "$user" "$home"
+            fi
+          fi
+        done
+      args:
+        executable: /bin/bash
+      tags:
+        - cis_6_2_12
+        - home_directory
+
+    - name: Ensure user home directories permissions are 750 or more restrictive
+      shell: |
+        set -o pipefail
+        grep -E '^[^:]+:[^:]*:[0-9]{4}' /etc/passwd | while IFS=: read -r user pass uid gid gecos home shell; do
+          if [ ! -z "$home" ] && [ -d "$home" ]; then
+            perms=$(stat -c '%a' "$home")
+            if [ $(echo "$perms" | head -c 1) -gt 7 ]; then
+              chmod g-w,o-rwx "$home"
+            fi
+          fi
+        done
+      args:
+        executable: /bin/bash
+      tags:
+        - cis_6_2_13
+        - home_directory
+
+    - name: Display user home directory settings
+      debug:
+        msg: "User home directory ownership and permissions configured"
+      tags:
+        - home_directory
+        - always
+
+  tags:
+    - cis_6_2
+    - file_permissions
+
+- name: CIS 6.3 - Search for world-writable files (Check)
+  block:
+    - name: Find world-writable files (CIS 6.3.1)
+      shell: find / -xdev -type f -perm -0002 2>/dev/null
+      register: world_writable_files
+      failed_when: false
+      changed_when: false
+      tags:
+        - cis_6_3_1
+        - world_writable
+
+    - name: Report world-writable files
+      debug:
+        msg: |
+          World-writable files found (should be reviewed):
+          {{ world_writable_files.stdout_lines | default(['None found (Good!)']) | join('\n') }}
+      tags:
+        - cis_6_3_1
+        - world_writable
+        - always
+
+    - name: Find SUID files (CIS 6.3.2)
+      shell: find / -xdev -type f -perm -4000 2>/dev/null
+      register: suid_files
+      failed_when: false
+      changed_when: false
+      tags:
+        - cis_6_3_2
+        - suid
+
+    - name: Report SUID files (review only)
+      debug:
+        msg: |
+          SUID files found (review for necessity):
+          {{ suid_files.stdout_lines | default(['None found']) | join('\n') | truncate(500) }}
+      tags:
+        - cis_6_3_2
+        - suid
+        - always
+
+    - name: Find SGID files (CIS 6.3.3)
+      shell: find / -xdev -type f -perm -2000 2>/dev/null
+      register: sgid_files
+      failed_when: false
+      changed_when: false
+      tags:
+        - cis_6_3_3
+        - sgid
+
+    - name: Report SGID files (review only)
+      debug:
+        msg: |
+          SGID files found (review for necessity):
+          {{ sgid_files.stdout_lines | default(['None found']) | join('\n') | truncate(500) }}
+      tags:
+        - cis_6_3_3
+        - sgid
+        - always
+
+  tags:
+    - cis_6_3
+    - file_permissions
+
+- name: CIS 6.4 - Unowned and ungrouped files
+  block:
+    - name: Find unowned files (CIS 6.4.1)
+      shell: find / -xdev -nouser -type f 2>/dev/null
+      register: unowned_files
+      failed_when: false
+      changed_when: false
+      tags:
+        - cis_6_4_1
+        - unowned
+
+    - name: Report unowned files
+      debug:
+        msg: |
+          Unowned files found (security risk):
+          {{ unowned_files.stdout_lines | default(['None found (Good!)']) | join('\n') | truncate(500) }}
+      tags:
+        - cis_6_4_1
+        - unowned
+        - always
+
+    - name: Find ungrouped files (CIS 6.4.2)
+      shell: find / -xdev -nogroup -type f 2>/dev/null
+      register: ungrouped_files
+      failed_when: false
+      changed_when: false
+      tags:
+        - cis_6_4_2
+        - ungrouped
+
+    - name: Report ungrouped files
+      debug:
+        msg: |
+          Ungrouped files found (security risk):
+          {{ ungrouped_files.stdout_lines | default(['None found (Good!)']) | join('\n') | truncate(500) }}
+      tags:
+        - cis_6_4_2
+        - ungrouped
+        - always
+
+  tags:
+    - cis_6_4
+    - file_permissions
+
+- name: CIS 6.5 - Audit SUID/SGID/Sticky bit (Informational)
+  block:
+    - name: Create audit report for special permissions
+      template:
+        src: file_audit_report.j2
+        dest: /tmp/file_audit_report.txt
+        mode: "0644"
+      tags:
+        - cis_6_5
+        - audit_report
+
+    - name: Display file audit information
+      debug:
+        msg: "File audit report generated for review"
+      tags:
+        - audit_report
+        - always
+
+  tags:
+    - cis_6_5
+    - file_permissions
+
+- name: Summary - File Permissions Hardening
+  debug:
+    msg: |
+      =====================================================================
+      File Permissions Hardening Summary:
+      =====================================================================
+      ✓ System file permissions configured
+      ✓ User home directory ownership verified
+      ✓ User home directory permissions secured
+      ✓ World-writable files identified (review needed)
+      ✓ SUID/SGID files identified (review needed)
+      ✓ Unowned/ungrouped files identified (remove if found)
+      =====================================================================
+  tags:
+    - always
+    - file_permissions

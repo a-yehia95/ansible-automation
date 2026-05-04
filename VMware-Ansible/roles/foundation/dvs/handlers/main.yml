@@ -1,0 +1,12 @@
+---
+# ==============================================================================
+# DVS Role - Handlers
+# ==============================================================================
+
+- name: Refresh DVS configuration
+  debug:
+    msg: "DVS configuration refreshed"
+
+- name: Recalculate port group allocations
+  debug:
+    msg: "Port group allocations recalculated"

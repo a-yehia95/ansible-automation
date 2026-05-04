@@ -1,0 +1,36 @@
+---
+# ==============================================================================
+# Ansible Requirements - Collections and Roles
+# ==============================================================================
+# Install with: ansible-galaxy install -r requirements.yml
+
+collections:
+  # VMware Collection (community-maintained)
+  - name: community.vmware
+    version: ">=4.3.0"
+    source: https://galaxy.ansible.com
+
+  # General Collections
+  - name: ansible.posix
+    version: ">=1.5.0"
+    source: https://galaxy.ansible.com
+
+  - name: ansible.netcommon
+    version: ">=5.0.0"
+    source: https://galaxy.ansible.com
+
+  - name: ansible.utils
+    version: ">=2.10.0"
+    source: https://galaxy.ansible.com
+
+  # Cloud/Infrastructure
+  - name: community.general
+    version: ">=7.0.0"
+    source: https://galaxy.ansible.com
+
+roles:
+  # Optional pre-built roles can be listed here
+  # Example:
+  # - name: geerlingguy.java
+  #   src: https://github.com/geerlingguy/ansible-role-java.git
+  #   version: main

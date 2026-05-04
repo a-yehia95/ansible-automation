@@ -1,0 +1,68 @@
+---
+# ==============================================================================
+# DAY 1 Playbook - Provisioning Operations
+# ==============================================================================
+# Purpose: Provision VMs and configure networking
+# Usage: ansible-playbook playbooks/day1/provision.yml
+
+- name: Day 1 - Provisioning Operations
+  hosts: day1_operations
+  gather_facts: no
+  connection: local
+
+  pre_tasks:
+    - name: Display Day 1 execution context
+      debug:
+        msg: |
+          =====================================================================
+          Day 1 - VM Provisioning Operations
+          =====================================================================
+          Operations:
+            - Resource Pool Configuration
+            - Distributed Virtual Switch (vDS) Creation
+            - Network Port Groups
+            - VM Cloning from Templates
+            - Hardware Configuration
+            - Network Interface Configuration
+          =====================================================================
+      tags:
+        - always
+        - info
+
+  roles:
+    - role: vcenter_init
+      tags:
+        - always
+        - init
+
+    - role: resource_pool_management
+      tags:
+        - day1
+        - provisioning
+
+    - role: network_config
+      tags:
+        - day1
+        - provisioning
+
+    - role: vm_provisioning
+      tags:
+        - day1
+        - provisioning
+
+  post_tasks:
+    - name: Day 1 completion summary
+      debug:
+        msg: |
+          =====================================================================
+          Day 1 Provisioning Operations - Complete
+          =====================================================================
+          Infrastructure Status:
+            - Resource Pools: CREATED
+            - vDistributed Switches: CONFIGURED
+            - Port Groups: CREATED
+            - Virtual Machines: PROVISIONED
+          =====================================================================
+      tags:
+        - always
+        - summary

@@ -1,0 +1,182 @@
+---
+# ==============================================================================
+# Role: cis_authentication - SSH and PAM Authentication Hardening
+# ==============================================================================
+# Purpose: Configure SSH and PAM for secure authentication
+
+- name: CIS 5.2 - SSH Server Configuration
+  block:
+    - name: Install OpenSSH server (CIS 5.2.1)
+      package:
+        name: openssh-server
+        state: present
+      tags:
+        - cis_5_2_1
+        - ssh
+
+    - name: Enable and start SSH (CIS 5.2.2)
+      systemd:
+        name: sshd
+        enabled: true
+        state: started
+      tags:
+        - cis_5_2_2
+        - ssh
+
+    - name: Configure SSH daemon (CIS 5.2.3)
+      template:
+        src: sshd_config.j2
+        dest: /etc/ssh/sshd_config
+        mode: "0600"
+        backup: true
+        validate: "/usr/sbin/sshd -t -f %s"
+      notify: restart sshd
+      tags:
+        - cis_5_2_3
+        - ssh
+
+    - name: Configure SSH Banner (CIS 5.2.16)
+      copy:
+        dest: /etc/ssh/banner
+        content: |
+          ###############################################################
+          SECURITY NOTICE
+          Unauthorized access to this system is forbidden and will be
+          prosecuted by law. By accessing this system, you agree that
+          your actions may be monitored and recorded.
+          ###############################################################
+        mode: "0644"
+      tags:
+        - cis_5_2_16
+        - ssh
+
+  tags:
+    - cis_5_2
+    - ssh_hardening
+
+- name: CIS 5.3 - PAM Configuration
+  block:
+    - name: Configure password quality requirements (CIS 5.3.1)
+      package:
+        name: libpwquality
+        state: present
+      tags:
+        - cis_5_3_1
+        - pam
+
+    - name: Configure pwquality.conf
+      template:
+        src: pwquality.conf.j2
+        dest: /etc/security/pwquality.conf
+        mode: "0644"
+      tags:
+        - cis_5_3_1
+        - pam
+
+    - name: Configure password history requirement (CIS 5.3.3)
+      lineinfile:
+        path: /etc/pam.d/system-auth
+        line: "password sufficient pam_unix.so sha512 shadow remember={{ cis_authentication.pam_config.password_history }}"
+        regexp: "^password.*pam_unix.so"
+        state: present
+      tags:
+        - cis_5_3_3
+        - pam
+
+  tags:
+    - cis_5_3
+    - pam_config
+
+- name: CIS 5.4 - SSH Key Configuration
+  block:
+    - name: Generate SSH host keys if missing (CIS 5.4.1)
+      command: ssh-keygen -A
+      args:
+        creates: /etc/ssh/ssh_host_rsa_key
+      tags:
+        - cis_5_4_1
+        - ssh_keys
+
+    - name: Configure SSH key permissions
+      file:
+        path: "/etc/ssh/ssh_host_{{ item }}_key"
+        mode: "0600"
+        owner: root
+        group: root
+      loop:
+        - rsa
+        - ecdsa
+        - ed25519
+      failed_when: false
+      tags:
+        - cis_5_4
+        - ssh_keys
+
+  tags:
+    - cis_5_4
+    - ssh_keys
+
+- name: CIS 5.5 - Restrict root login
+  block:
+    - name: Restrict direct root SSH login (CIS 5.5.1)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        line: "PermitRootLogin without-password"
+        regexp: "^#?PermitRootLogin"
+        state: present
+      notify: restart sshd
+      tags:
+        - cis_5_5_1
+        - root_login
+
+    - name: Disable empty password SSH login (CIS 5.5.2)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        line: "PermitEmptyPasswords no"
+        regexp: "^#?PermitEmptyPasswords"
+        state: present
+      notify: restart sshd
+      tags:
+        - cis_5_5_2
+        - ssh_security
+
+  tags:
+    - cis_5_5
+    - ssh_hardening
+
+- name: Display SSH and PAM Configuration
+  debug:
+    msg: |
+      SSH and PAM configuration:
+      - SSH daemon hardened
+      - SSH key authentication configured
+      - PAM password quality requirements enforced
+      - Root login restricted
+  tags:
+    - always
+    - authentication
+
+- name: Handler - Restart SSH daemon
+  listen: "restart sshd"
+  systemd:
+    name: sshd
+    state: restarted
+  tags:
+    - ssh_hardening
+
+- name: Summary - SSH and PAM Authentication
+  debug:
+    msg: |
+      =====================================================================
+      SSH and PAM Authentication Hardening Summary:
+      =====================================================================
+      ✓ SSH server hardened
+      ✓ SSH key authentication configured
+      ✓ PAM password quality requirements enforced
+      ✓ SSH banner configured
+      ✓ Root login restricted (key-only or no root)
+      ✓ Empty password login disabled
+      =====================================================================
+  tags:
+    - always
+    - authentication

@@ -1,0 +1,147 @@
+---
+# ==============================================================================
+# Role: vcenter_init
+# Description: Initialize vCenter connection and validate prerequisites
+# ==============================================================================
+# Purpose: Validate vCenter connectivity and API access before operations
+
+- name: Initialize vCenter connection
+  block:
+    - name: Display vCenter connection parameters
+      debug:
+        msg: |
+          Initializing vCenter Foundation Automation
+          vCenter: {{ vcenter_hostname }}
+          Port: {{ vcenter_port }}
+          Username: {{ vcenter_username }}
+          SSL Verification: {{ not vcenter_insecure_ssl }}
+      tags:
+        - always
+        - debug
+
+    - name: Test vCenter API connectivity
+      uri:
+        url: "https://{{ vcenter_hostname }}:{{ vcenter_port }}/api/vcenter/host"
+        validate_certs: "{{ vcenter_validate_certs }}"
+        user: "{{ vcenter_username }}"
+        password: "{{ vault_vcenter_password }}"
+        method: GET
+        status_code: 200
+      register: vcenter_api_test
+      failed_when: false
+      changed_when: false
+      tags:
+        - always
+        - connectivity
+
+    - name: Handle vCenter API connection failure
+      fail:
+        msg: |
+          Failed to connect to vCenter API
+          Status Code: {{ vcenter_api_test.status | default('N/A') }}
+          Response: {{ vcenter_api_test.msg | default('Unable to reach vCenter') }}
+          Please verify:
+          - vCenter hostname and port
+          - Network connectivity
+          - Credentials
+      when: vcenter_api_test.status is defined and vcenter_api_test.status != 200
+      tags:
+        - always
+        - connectivity
+
+    - name: Display successful API connection
+      debug:
+        msg: "Successfully connected to vCenter API"
+        verbosity: 1
+      when: vcenter_api_test.status is defined and vcenter_api_test.status == 200
+      tags:
+        - always
+        - connectivity
+
+    - name: Gather vCenter version information
+      community.general.uri:
+        url: "https://{{ vcenter_hostname }}:{{ vcenter_port }}/api/appliance/system/version"
+        validate_certs: "{{ vcenter_validate_certs }}"
+        user: "{{ vcenter_username }}"
+        password: "{{ vault_vcenter_password }}"
+        method: GET
+        status_code: 200
+      register: vcenter_version_info
+      failed_when: false
+      changed_when: false
+      tags:
+        - always
+        - info
+
+    - name: Display vCenter version
+      debug:
+        msg: |
+          vCenter Version Information:
+          {{ vcenter_version_info.json | default({}) | to_nice_yaml }}
+        verbosity: 0
+      when: vcenter_version_info.status is defined and vcenter_version_info.status == 200
+      tags:
+        - always
+        - info
+
+    - name: Verify Python vmware_rest module is available
+      command: python3 -m pip show vmware_rest
+      register: vmware_rest_check
+      failed_when: false
+      changed_when: false
+      tags:
+        - always
+        - prerequisites
+
+    - name: Display vmware_rest module information
+      debug:
+        msg: "vmware_rest collection is installed and available"
+        verbosity: 1
+      when: vmware_rest_check.rc == 0
+      tags:
+        - always
+        - prerequisites
+
+    - name: Create logging directory
+      file:
+        path: "{{ playbook_dir }}/logs"
+        state: directory
+        mode: '0755'
+      changed_when: false
+      tags:
+        - always
+        - setup
+
+    - name: Initialize execution log
+      copy:
+        content: |
+          # VMware vSphere Foundation Automation - Execution Log
+          # Generated: {{ ansible_date_time.iso8601 }}
+          # Environment: {{ environment_name }}
+          # vCenter: {{ vcenter_hostname }}
+          
+          ## Execution Summary
+          - Started at: {{ ansible_date_time.iso8601 }}
+          - Playbook: {{ playbook }}
+          - Hosts: {{ groups_count | default('N/A') }}
+          
+        dest: "{{ playbook_dir }}/logs/execution_{{ ansible_date_time.date }}_{{ ansible_date_time.time }}.log"
+        mode: '0644'
+      changed_when: false
+      tags:
+        - always
+        - logging
+
+  rescue:
+    - name: Handle vCenter initialization failure
+      fail:
+        msg: |
+          vCenter initialization failed
+          Error: {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags:
+        - always
+        - error_handling
+
+  tags:
+    - vcenter_init
+    - day0

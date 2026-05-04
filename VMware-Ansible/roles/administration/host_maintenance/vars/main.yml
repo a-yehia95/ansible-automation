@@ -1,0 +1,8 @@
+---
+# ==============================================================================
+# Host Maintenance Role - Vars
+# ==============================================================================
+
+maintenance_mode: "enter"  # Options: enter, exit
+evacuate_powered_off_vms: false
+timeout_seconds: 600

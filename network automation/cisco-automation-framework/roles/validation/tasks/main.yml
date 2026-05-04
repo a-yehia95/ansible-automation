@@ -1,0 +1,207 @@
+---
+# ============================================================================
+# Validation Role - Day 2 Operations: Stateful Health Checks
+# ============================================================================
+
+# Gather Device Facts
+- name: Gather IOS device facts
+  cisco.ios.ios_facts:
+    gather_subset:
+      - config
+      - hardware
+      - interfaces
+      - routes
+  register: device_facts
+  tags:
+    - day2
+    - validation
+    - facts
+
+# Check OSPF Neighbor Status
+- name: Check OSPF neighbor status
+  cisco.ios.ios_command:
+    commands:
+      - "show ip ospf neighbor"
+  register: ospf_neighbors
+  when: routing.ospf.enabled | default(false)
+  tags:
+    - day2
+    - validation
+    - ospf
+
+- name: Validate OSPF neighbors are UP
+  assert:
+    that:
+      - "'FULL' in ospf_neighbors.stdout[0]"
+    fail_msg: "OSPF neighbors are not in FULL state"
+  when:
+    - routing.ospf.enabled | default(false)
+    - ospf_neighbors is defined
+  tags:
+    - day2
+    - validation
+    - ospf
+
+# Check Interface Status
+- name: Check interface operational status
+  cisco.ios.ios_command:
+    commands:
+      - "show ip interface brief"
+  register: interface_status
+  tags:
+    - day2
+    - validation
+    - interfaces
+
+- name: Validate all critical interfaces are UP
+  assert:
+    that:
+      - "item.name in interface_status.stdout[0] and 'up' in interface_status.stdout[0]"
+    fail_msg: "Interface {{ item.name }} is not operational"
+  loop: "{{ interfaces }}"
+  when: interfaces is defined
+  tags:
+    - day2
+    - validation
+    - interfaces
+
+# Check CPU Utilization
+- name: Check CPU utilization
+  cisco.ios.ios_command:
+    commands:
+      - "show processes cpu | include CPU utilization"
+  register: cpu_status
+  tags:
+    - day2
+    - validation
+    - performance
+
+- name: Alert on high CPU
+  debug:
+    msg: "WARNING: CPU utilization is high - {{ cpu_status.stdout[0] }}"
+  when:
+    - cpu_status.stdout is defined
+    - health_check.cpu_threshold | int in cpu_status.stdout[0]
+  tags:
+    - day2
+    - validation
+    - performance
+
+# Check Memory Status
+- name: Check memory status
+  cisco.ios.ios_command:
+    commands:
+      - "show memory summary"
+  register: memory_status
+  tags:
+    - day2
+    - validation
+    - performance
+
+- name: Alert on high memory usage
+  debug:
+    msg: "WARNING: Memory usage is high - {{ memory_status.stdout[0] }}"
+  when:
+    - memory_status.stdout is defined
+  tags:
+    - day2
+    - validation
+    - performance
+
+# Check Spanning Tree Status
+- name: Check Spanning Tree status (for switches)
+  cisco.ios.ios_command:
+    commands:
+      - "show spanning-tree summary"
+  register: stp_status
+  when: device_role == 'core_switch'
+  tags:
+    - day2
+    - validation
+    - spanning_tree
+
+- name: Validate Spanning Tree is running
+  assert:
+    that:
+      - "'rapid' in stp_status.stdout[0] or 'pvst' in stp_status.stdout[0]"
+    fail_msg: "Spanning Tree is not running properly"
+  when:
+    - device_role == 'core_switch'
+    - stp_status is defined
+  tags:
+    - day2
+    - validation
+    - spanning_tree
+
+# VLAN Verification
+- name: Get configured VLANs
+  cisco.ios.ios_command:
+    commands:
+      - "show vlan summary"
+  register: vlan_status
+  tags:
+    - day2
+    - validation
+    - vlans
+
+# Configuration Compliance Check
+- name: Verify SSH version 2 is enabled
+  cisco.ios.ios_command:
+    commands:
+      - "show ip ssh"
+  register: ssh_status
+  tags:
+    - day2
+    - validation
+    - security
+
+- name: Assert SSH v2 is configured
+  assert:
+    that:
+      - "'version 2' in ssh_status.stdout[0]"
+    fail_msg: "SSH version 2 is not enabled"
+  when: compliance.ssh_version_2_only | default(true)
+  tags:
+    - day2
+    - validation
+    - security
+
+# Temperature Check (if available)
+- name: Check device temperature
+  cisco.ios.ios_command:
+    commands:
+      - "show environment temperature"
+  register: temp_status
+  ignore_errors: true
+  tags:
+    - day2
+    - validation
+    - performance
+
+# Generate Validation Report
+- name: Create validation report
+  template:
+    src: validation_report.j2
+    dest: "./logs/validation_report_{{ inventory_hostname }}_{{ ansible_date_time.iso8601 }}.txt"
+  delegate_to: localhost
+  tags:
+    - day2
+    - validation
+    - reporting
+
+- name: Display validation summary
+  debug:
+    msg: |
+      ========================================
+      VALIDATION REPORT - {{ inventory_hostname }}
+      ========================================
+      Hostname: {{ ansible_net_hostname }}
+      Model: {{ ansible_net_model }}
+      Version: {{ ansible_net_version }}
+      Uptime: {{ device_facts.ansible_net_uptime_seconds | default('N/A') }} seconds
+      Interfaces: {{ device_facts.ansible_net_interfaces.keys() | list | join(', ') }}
+      ========================================
+  tags:
+    - day2
+    - validation
+    - reporting

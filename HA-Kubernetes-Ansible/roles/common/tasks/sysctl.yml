@@ -1,0 +1,95 @@
+---
+# ==============================================================================
+# Common Role - Sysctl Configuration
+# ==============================================================================
+
+- name: Load br_netfilter kernel module
+  block:
+    - name: Create br_netfilter module load file
+      file:
+        path: /etc/modules-load.d/br_netfilter.conf
+        state: touch
+        mode: "0644"
+      register: br_netfilter_file
+      changed_when: br_netfilter_file.changed
+
+    - name: Add br_netfilter module
+      lineinfile:
+        path: /etc/modules-load.d/br_netfilter.conf
+        line: "br_netfilter"
+        state: present
+      register: br_netfilter_load
+      changed_when: br_netfilter_load.changed
+
+    - name: Load br_netfilter module immediately
+      modprobe:
+        name: br_netfilter
+        state: present
+      register: br_netfilter_modprobe
+      changed_when: br_netfilter_modprobe.changed
+
+- name: Load overlay kernel module (for cri-o)
+  block:
+    - name: Create overlay module load file
+      file:
+        path: /etc/modules-load.d/overlay.conf
+        state: touch
+        mode: "0644"
+      register: overlay_file
+      changed_when: overlay_file.changed
+
+    - name: Add overlay module
+      lineinfile:
+        path: /etc/modules-load.d/overlay.conf
+        line: "overlay"
+        state: present
+      register: overlay_load
+      changed_when: overlay_load.changed
+
+    - name: Load overlay module immediately
+      modprobe:
+        name: overlay
+        state: present
+      register: overlay_modprobe
+      changed_when: overlay_modprobe.changed
+
+- name: Configure sysctl parameters for Kubernetes
+  block:
+    - name: Create Kubernetes sysctl configuration file
+      file:
+        path: /etc/sysctl.d/99-kubernetes.conf
+        state: touch
+        mode: "0644"
+      register: k8s_sysctl_file
+      changed_when: k8s_sysctl_file.changed
+
+    - name: Apply sysctl parameters
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_set: yes
+        state: present
+        reload: yes
+      loop: "{{ sysctl_params | dict2items }}"
+      register: sysctl_apply
+      changed_when: sysctl_apply.changed
+
+- name: Verify kernel module loading
+  block:
+    - name: Check br_netfilter module
+      command: lsmod | grep br_netfilter
+      register: br_netfilter_check
+      changed_when: false
+      failed_when: br_netfilter_check.rc != 0 and br_netfilter_check.rc != 1
+
+    - name: Check overlay module
+      command: lsmod | grep overlay
+      register: overlay_check
+      changed_when: false
+      failed_when: overlay_check.rc != 0 and overlay_check.rc != 1
+
+    - name: Display kernel modules status
+      debug:
+        msg:
+          - "br_netfilter: {{ 'loaded' if br_netfilter_check.rc == 0 else 'not loaded' }}"
+          - "overlay: {{ 'loaded' if overlay_check.rc == 0 else 'not loaded' }}"
