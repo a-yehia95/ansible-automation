@@ -17,3 +17,29 @@ Device /var/lib/ceph/osd/ceph-1/block-tmp is not a valid LUKS device.
 Running in FIPS mode.
 Command failed with code -1 (wrong or missing parameters).
 [anegm@helper-datagov-hq ~]$
+
+oc -n openshift-storage rsh $(oc get pods -n openshift-storage -l app=rook-ceph-tools -o name)
+sh-5.1$ ceph -s
+  cluster:
+    id:     a6ea0599-94fb-4de3-b8a8-fda1b847c78b
+    health: HEALTH_WARN
+            Degraded data redundancy: 93076/279228 objects degraded (33.333%), 117 pgs degraded, 169 pgs undersized
+
+  services:
+    mon: 3 daemons, quorum a,b,d (age 23m)
+    mgr: b(active, since 2h), standbys: a
+    mds: 1/1 daemons up, 1 hot standby
+    osd: 3 osds: 2 up (since 106m), 2 in (since 2h)
+    rgw: 1 daemon active (1 hosts, 1 zones)
+
+  data:
+    volumes: 1/1 healthy
+    pools:   12 pools, 169 pgs
+    objects: 93.08k objects, 99 GiB
+    usage:   171 GiB used, 3.8 TiB / 4.0 TiB avail
+    pgs:     93076/279228 objects degraded (33.333%)
+             117 active+undersized+degraded
+             52  active+undersized
+
+  io:
+    client:   1.1 MiB/s rd, 1.2 MiB/s wr, 4 op/s rd, 45 op/s wr
