@@ -1,0 +1,19 @@
+oc logs  rook-ceph-osd-1-8466646d45-2fwts  -n openshift-storage -c encryption-open
++ CEPH_FSID=a6ea0599-94fb-4de3-b8a8-fda1b847c78b
++ PVC_NAME=ocs-deviceset-local-sc-0-data-12vtvd
++ KEY_FILE_PATH=/etc/ceph/luks_key
++ BLOCK_PATH=/var/lib/ceph/osd/ceph-1/block-tmp
++ DM_NAME=ocs-deviceset-local-sc-0-data-12vtvd-block-dmcrypt
++ DM_PATH=/dev/mapper/ocs-deviceset-local-sc-0-data-12vtvd-block-dmcrypt
++ dmsetup version
+Library version:   1.02.207-RHEL9 (2025-09-25)
+Driver version:    4.48.1
++ '[' -b /dev/mapper/ocs-deviceset-local-sc-0-data-12vtvd-block-dmcrypt ']'
++ open_encrypted_block
++ echo 'Opening encrypted device /var/lib/ceph/osd/ceph-1/block-tmp at /dev/mapper/ocs-deviceset-local-sc-0-data-12vtvd-block-dmcrypt'
+Opening encrypted device /var/lib/ceph/osd/ceph-1/block-tmp at /dev/mapper/ocs-deviceset-local-sc-0-data-12vtvd-block-dmcrypt
++ cryptsetup luksOpen --verbose --disable-keyring --allow-discards --key-file /etc/ceph/luks_key /var/lib/ceph/osd/ceph-1/block-tmp ocs-deviceset-local-sc-0-data-12vtvd-block-dmcrypt
+Device /var/lib/ceph/osd/ceph-1/block-tmp is not a valid LUKS device.
+Running in FIPS mode.
+Command failed with code -1 (wrong or missing parameters).
+[anegm@helper-datagov-hq ~]$
