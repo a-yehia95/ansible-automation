@@ -43,3 +43,12 @@ sh-5.1$ ceph -s
 
   io:
     client:   1.1 MiB/s rd, 1.2 MiB/s wr, 4 op/s rd, 45 op/s wr
+
+
+
+
+
+try it read-only ... https://filetransfer.io/data-package/3gvdgvRj#link
+
+
+method when recovering a few magic bytes isn't enough: https://unix.stackexchange.com/a/741850/30851
