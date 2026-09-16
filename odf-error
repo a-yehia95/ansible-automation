@@ -46,7 +46,252 @@ sh-5.1$ ceph -s
 
 Join: https://teams.microsoft.com/meet/354136275406453?p=myR3ECurrt8I4VG5U7 
 
+[anegm@helper-int-uat ~]$ oc describe collector-ptdm5
+error: the server doesn't have a resource type "collector-ptdm5"
+[anegm@helper-int-uat ~]$ oc describe po collector-ptdm5
+Name:             collector-ptdm5
+Namespace:        rhacs-operator
+Priority:         0
+Service Account:  collector
+Node:             channels04ocpchnls.domain.edbe.local/10.100.70.94
+Start Time:       Wed, 16 Sep 2026 16:14:42 +0300
+Labels:           app=collector
+                  app.kubernetes.io/component=collector
+                  app.kubernetes.io/instance=stackrox-secured-cluster-services
+                  app.kubernetes.io/managed-by=Helm
+                  app.kubernetes.io/name=stackrox
+                  app.kubernetes.io/part-of=stackrox-secured-cluster-services
+                  app.kubernetes.io/version=4.11.4
+                  controller-revision-hash=7dbcf648fd
+                  helm.sh/chart=stackrox-secured-cluster-services-400.11.4
+                  pod-template-generation=24
+                  service=collector
+                  sidecar.istio.io/inject=false
+Annotations:      app.stackrox.io/config-hash: ade348961215eb0ab208139291aeec105ab09fd58c959f67ad2aa742ca9e95a8
+                  email: support@stackrox.com
+                  k8s.ovn.org/pod-networks:
+                    {"default":{"ip_addresses":["10.131.7.152/23"],"mac_address":"0a:58:0a:83:07:98","gateway_ips":["10.131.6.1"],"routes":[{"dest":"10.128.0....
+                  k8s.v1.cni.cncf.io/network-status:
+                    [{
+                        "name": "ovn-kubernetes",
+                        "interface": "eth0",
+                        "ips": [
+                            "10.131.7.152"
+                        ],
+                        "mac": "0a:58:0a:83:07:98",
+                        "default": true,
+                        "dns": {}
+                    }]
+                  meta.helm.sh/release-name: stackrox-secured-cluster-services
+                  meta.helm.sh/release-namespace: rhacs-operator
+                  openshift.io/required-scc: privileged
+                  openshift.io/scc: privileged
+                  owner: stackrox
+                  security.openshift.io/validated-scc-subject-type: serviceaccount
+Status:           Pending
+IP:
+IPs:              <none>
+Controlled By:    DaemonSet/collector
+Containers:
+  collector:
+    Container ID:
+    Image:          registry.redhat.io/advanced-cluster-security/rhacs-collector-rhel9@sha256:85c506faa54ba1870911a575e8e219e9d62f98af7e0a422f9c54aac49888baed
+    Image ID:
+    Port:           <none>
+    Host Port:      <none>
+    State:          Waiting
+      Reason:       ContainerCreating
+    Ready:          False
+    Restart Count:  0
+    Limits:
+      cpu:     750m
+      memory:  1Gi
+    Requests:
+      cpu:     50m
+      memory:  320Mi
+    Environment:
+      COLLECTOR_CONFIG:   {"tlsConfig":{"caCertPath":"/var/run/secrets/stackrox.io/certs/ca.pem","clientCertPath":"/var/run/secrets/stackrox.io/certs/cert.pem","clientKeyPath":"/var/run/secrets/stackrox.io/certs/key.pem"}}
+      COLLECTION_METHOD:  CORE_BPF
+      GRPC_SERVER:        sensor.rhacs-operator.svc:443
+      SNI_HOSTNAME:       sensor.stackrox.svc
+      HTTPS_PROXY:        <set to the key 'HTTPS_PROXY' in secret 'securedcluster-stackrox-secured-cluster-services-proxy-env'>  Optional: false
+      HTTP_PROXY:         <set to the key 'HTTP_PROXY' in secret 'securedcluster-stackrox-secured-cluster-services-proxy-env'>   Optional: false
+      NO_PROXY:           <set to the key 'NO_PROXY' in secret 'securedcluster-stackrox-secured-cluster-services-proxy-env'>     Optional: false
+    Mounts:
+      /etc/stackrox from collector-config (ro)
+      /host/dev from dev-ro (ro)
+      /host/etc from etc-ro (ro)
+      /host/proc from proc-ro (ro)
+      /host/sys from sys-ro (ro)
+      /host/usr/lib from usr-lib-ro (ro)
+      /run/secrets/stackrox.io/certs/ from certs (ro)
+      /var/profiles from collector-profiles (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-5qfrl (ro)
+  compliance:
+    Container ID:
+    Image:         registry.redhat.io/advanced-cluster-security/rhacs-main-rhel9@sha256:29694001cdc5069900ae3a09b8791e82c46de3d8afad46827240ef6f3a8e4a14
+    Image ID:
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      stackrox/compliance
+    State:          Waiting
+      Reason:       ContainerCreating
+    Ready:          False
+    Restart Count:  0
+    Limits:
+      cpu:     1
+      memory:  2Gi
+    Requests:
+      cpu:     10m
+      memory:  10Mi
+    Environment:
+      ROX_MEMLIMIT:                     2147483648 (limits.memory)
+      GOMAXPROCS:                       1 (limits.cpu)
+      POD_NAME:                         collector-ptdm5 (v1:metadata.name)
+      POD_NAMESPACE:                    rhacs-operator (v1:metadata.namespace)
+      ROX_CALL_NODE_INVENTORY_ENABLED:  true
+      ROX_NODE_INDEX_HOST_PATH:         /hostindex
+      ROX_METRICS_PORT:                 disabled
+      ROX_NODE_NAME:                     (v1:spec.nodeName)
+      ROX_ADVERTISED_ENDPOINT:          sensor.rhacs-operator.svc:443
+      ROX_NODE_SCANNING_ENDPOINT:       127.0.0.1:8444
+      HTTPS_PROXY:                      <set to the key 'HTTPS_PROXY' in secret 'securedcluster-stackrox-secured-cluster-services-proxy-env'>  Optional: false
+      HTTP_PROXY:                       <set to the key 'HTTP_PROXY' in secret 'securedcluster-stackrox-secured-cluster-services-proxy-env'>   Optional: false
+      NO_PROXY:                         <set to the key 'NO_PROXY' in secret 'securedcluster-stackrox-secured-cluster-services-proxy-env'>     Optional: false
+    Mounts:
+      /etc/pki/ca-trust/ from etc-pki-volume (rw)
+      /etc/ssl/ from etc-ssl (rw)
+      /host from host-root-ro (ro)
+      /hostindex/usr/share from usr-share-ro (ro)
+      /run/secrets/stackrox.io/certs/ from certs (ro)
+      /tmp from index-volume (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-5qfrl (ro)
+  node-inventory:
+    Container ID:
+    Image:         registry.redhat.io/advanced-cluster-security/rhacs-scanner-slim-rhel9@sha256:1f789c1186e11beac4edd8068e088506ed6189e75afaf446e7bc3db617787aba
+    Image ID:
+    Port:          8444/TCP
+    Host Port:     0/TCP
+    Command:
+      /scanner
+      --nodeinventory
+      --config=
 
+    State:          Waiting
+      Reason:       ContainerCreating
+    Ready:          False
+    Restart Count:  0
+    Limits:
+      cpu:     1
+      memory:  500Mi
+    Requests:
+      cpu:     10m
+      memory:  10Mi
+    Environment:
+      ROX_NODE_NAME:   (v1:spec.nodeName)
+      POD_NAME:       collector-ptdm5 (v1:metadata.name)
+      POD_NAMESPACE:  rhacs-operator (v1:metadata.namespace)
+      HTTPS_PROXY:    <set to the key 'HTTPS_PROXY' in secret 'securedcluster-stackrox-secured-cluster-services-proxy-env'>  Optional: false
+      HTTP_PROXY:     <set to the key 'HTTP_PROXY' in secret 'securedcluster-stackrox-secured-cluster-services-proxy-env'>   Optional: false
+      NO_PROXY:       <set to the key 'NO_PROXY' in secret 'securedcluster-stackrox-secured-cluster-services-proxy-env'>     Optional: false
+    Mounts:
+      /cache from cache-volume (rw)
+      /host from host-root-ro (ro)
+      /tmp/ from tmp-volume (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-5qfrl (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   False
+  Initialized                 True
+  Ready                       False
+  ContainersReady             False
+  PodScheduled                True
+Volumes:
+  proc-ro:
+    Type:          HostPath (bare host directory volume)
+    Path:          /proc
+    HostPathType:
+  etc-ro:
+    Type:          HostPath (bare host directory volume)
+    Path:          /etc
+    HostPathType:
+  usr-lib-ro:
+    Type:          HostPath (bare host directory volume)
+    Path:          /usr/lib
+    HostPathType:
+  sys-ro:
+    Type:          HostPath (bare host directory volume)
+    Path:          /sys/
+    HostPathType:
+  dev-ro:
+    Type:          HostPath (bare host directory volume)
+    Path:          /dev
+    HostPathType:
+  certs:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  tls-cert-collector
+    Optional:    false
+  host-root-ro:
+    Type:          HostPath (bare host directory volume)
+    Path:          /
+    HostPathType:
+  usr-share-ro:
+    Type:          HostPath (bare host directory volume)
+    Path:          /usr/share
+    HostPathType:
+  index-volume:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:
+    SizeLimit:  <unset>
+  etc-ssl:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:
+    SizeLimit:  <unset>
+  etc-pki-volume:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:
+    SizeLimit:  <unset>
+  tmp-volume:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:
+    SizeLimit:  <unset>
+  collector-profiles:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:
+    SizeLimit:  <unset>
+  cache-volume:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:
+    SizeLimit:  200Mi
+  collector-config:
+    Type:      ConfigMap (a volume populated by a ConfigMap)
+    Name:      collector-config
+    Optional:  true
+  fact-config:
+    Type:      ConfigMap (a volume populated by a ConfigMap)
+    Name:      fact-config
+    Optional:  true
+  kube-api-access-5qfrl:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+    ConfigMapName:           openshift-service-ca.crt
+    Optional:                false
+QoS Class:                   Burstable
+Node-Selectors:              <none>
+Tolerations:                 op=Exists
+Events:
+  Type     Reason                  Age                From               Message
+  ----     ------                  ----               ----               -------
+  Normal   Scheduled               27s                default-scheduler  Successfully assigned rhacs-operator/collector-ptdm5 to channels04ocpchnls.domain.edbe.local
+  Warning  FailedCreatePodSandBox  27s                kubelet            Failed to create pod sandbox: rpc error: code = Unknown desc = failed to mount container k8s_POD_collector-ptdm5_rhacs-operator_d8142ef2-793f-4f74-92bc-82bd7a887920_0 in pod sandbox k8s_collector-ptdm5_rhacs-operator_d8142ef2-793f-4f74-92bc-82bd7a887920_0(f1507b279f6a024bb60e28f3c56674d5cf51c50cd5bf461b8d6b69a4b857724e): creating overlay mount to /var/lib/containers/storage/overlay/bd2c7119168feac8b3a5fcde3b6c956e3df187e6df6267a45d34ad4853c89ded/merged, mount_data="lowerdir=/var/lib/containers/storage/overlay/l/6EOGU4CAYHPJ32ZUL5MVVVHRWN:/var/lib/containers/storage/overlay/l/LPODHWZP23WRQEY7QVNSZF6KKQ:/var/lib/containers/storage/overlay/l/EHBQQMONO2PJ5BCUFZBM3OP5YC:/var/lib/containers/storage/overlay/l/HWKDD6LHMXONZKSU7PEGZ3VJUJ,upperdir=/var/lib/containers/storage/overlay/bd2c7119168feac8b3a5fcde3b6c956e3df187e6df6267a45d34ad4853c89ded/diff,workdir=/var/lib/containers/storage/overlay/bd2c7119168feac8b3a5fcde3b6c956e3df187e6df6267a45d34ad4853c89ded/work,volatile,context=\"system_u:object_r:container_file_t:s0:c403,c407\"": input/output error
+  Warning  FailedCreatePodSandBox  26s                kubelet            Failed to create pod sandbox: rpc error: code = Unknown desc = failed to mount container k8s_POD_collector-ptdm5_rhacs-operator_d8142ef2-793f-4f74-92bc-82bd7a887920_0 in pod sandbox k8s_collector-ptdm5_rhacs-operator_d8142ef2-793f-4f74-92bc-82bd7a887920_0(0505534d9bdf9b6211a71eff75b1589499b391934bf8105e15a13fd96deab3c1): creating overlay mount to /var/lib/containers/storage/overlay/d90db248f59f7065bb586232b1a4d2e291035cd9b86fdb1527879dc9ba9ad9e9/merged, mount_data="lowerdir=/var/lib/containers/storage/overlay/l/6EOGU4CAYHPJ32ZUL5MVVVHRWN:/var/lib/containers/storage/overlay/l/LPODHWZP23WRQEY7QVNSZF6KKQ:/var/lib/containers/storage/overlay/l/EHBQQMONO2PJ5BCUFZBM3OP5YC:/var/lib/containers/storage/overlay/l/HWKDD6LHMXONZKSU7PEGZ3VJUJ,upperdir=/var/lib/containers/storage/overlay/d90db248f59f7065bb586232b1a4d2e291035cd9b86fdb1527879dc9ba9ad9e9/diff,workdir=/var/lib/containers/storage/overlay/d90db248f59f7065bb586232b1a4d2e291035cd9b86fdb1527879dc9ba9ad9e9/work,volatile,context=\"system_u:object_r:container_file_t:s0:c386,c542\"": input/output error
+  Normal   AddedInterface          11s (x3 over 27s)  multus             Add eth0 [10.131.7.152/23] from ovn-kubernetes
+  Warning  FailedCreatePodSandBox  11s                kubelet            Failed to create pod sandbox: rpc error: code = Unknown desc = failed to mount container k8s_POD_collector-ptdm5_rhacs-operator_d8142ef2-793f-4f74-92bc-82bd7a887920_0 in pod sandbox k8s_collector-ptdm5_rhacs-operator_d8142ef2-793f-4f74-92bc-82bd7a887920_0(4ca60e70e560e9ee42a6bc128bf654850d21bfb5ca381815087e85f85e38ebf5): creating overlay mount to /var/lib/containers/storage/overlay/41253de474b3286e662b30433e0c2a2b3d44eb7f071b27ac86a1b2e8da1a1265/merged, mount_data="lowerdir=/var/lib/containers/storage/overlay/l/6EOGU4CAYHPJ32ZUL5MVVVHRWN:/var/lib/containers/storage/overlay/l/LPODHWZP23WRQEY7QVNSZF6KKQ:/var/lib/containers/storage/overlay/l/EHBQQMONO2PJ5BCUFZBM3OP5YC:/var/lib/containers/storage/overlay/l/HWKDD6LHMXONZKSU7PEGZ3VJUJ,upperdir=/var/lib/containers/storage/overlay/41253de474b3286e662b30433e0c2a2b3d44eb7f071b27ac86a1b2e8da1a1265/diff,workdir=/var/lib/containers/storage/overlay/41253de474b3286e662b30433e0c2a2b3d44eb7f071b27ac86a1b2e8da1a1265/work,volatile,context=\"system_u:object_r:container_file_t:s0:c518,c917\"": input/output error
+[anegm@helper-int-uat ~]$
 
 try it read-only ... https://filetransfer.io/data-package/3gvdgvRj#link
 
